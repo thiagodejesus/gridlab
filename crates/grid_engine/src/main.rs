@@ -1,0 +1,190 @@
+use std::{thread, time};
+
+use grid_engine::grid_engine::{GridEngine, Node};
+
+enum Interaction {
+    PrintGrid,
+    AddItem(usize, usize, usize, usize, String),
+    MoveItem(String, usize, usize),
+    RemoveItem(String),
+    InvalidInteraction(String),
+}
+
+impl Interaction {
+    fn from_str(input: &str) -> Interaction {
+        // Should match input starts with
+        let mut parts = input.split_whitespace();
+        let action = parts.next().unwrap_or("");
+
+        match action {
+            "print" => Interaction::PrintGrid,
+            "add" => {
+                println!("{}", input);
+                let x = parts
+                    .next()
+                    .expect("Expect X")
+                    .parse()
+                    .expect("Expect x to be number");
+                let y = parts
+                    .next()
+                    .expect("Expect Y")
+                    .parse()
+                    .expect("Expect y to be number");
+                let w = parts
+                    .next()
+                    .expect("Expect W")
+                    .parse()
+                    .expect("Expect w to be number");
+                let h = parts
+                    .next()
+                    .expect("Expect H")
+                    .parse()
+                    .expect("Expect h to be number");
+
+                let item = parts.next().unwrap_or("9");
+                Interaction::AddItem(x, y, w, h, item.to_string())
+            }
+            "rm" => {
+                let id = parts.next().expect("Expect ID");
+                Interaction::RemoveItem(id.to_string())
+            }
+            "mv" => {
+                let id = parts.next().expect("Expect ID");
+                let x = parts
+                    .next()
+                    .expect("Expect X")
+                    .parse()
+                    .expect("Expect x to be number");
+                let y = parts
+                    .next()
+                    .expect("Expect Y")
+                    .parse()
+                    .expect("Expect y to be number");
+                Interaction::MoveItem(id.to_string(), x, y)
+            }
+            _ => Interaction::InvalidInteraction(input.to_string()),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct GridContent {
+    name: String,
+}
+
+impl Default for GridContent {
+    fn default() -> Self {
+        GridContent {
+            name: "0".to_string(),
+        }
+    }
+}
+
+impl std::fmt::Display for GridContent {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.name)
+    }
+}
+
+fn handle_interaction(grid: &mut GridEngine<GridContent>, interaction: Interaction) {
+    match interaction {
+        Interaction::PrintGrid => {
+            print!("\x1B[2J\x1B[1;1H");
+            println!("Printing the grid");
+            grid.print_grid();
+        }
+        Interaction::AddItem(x, y, w, h, item) => {
+            println!("Adding item to the grid");
+            grid.add_item(x, y, w, h, GridContent { name: item });
+        }
+        Interaction::RemoveItem(id) => {
+            println!("Removing item {} from the grid", &id);
+            grid.remove_item(&id);
+        }
+        Interaction::MoveItem(id, x, y) => {
+            println!("Moving item {} to ({}, {})", &id, x, y);
+            grid.move_item(&id, x, y);
+        }
+        Interaction::InvalidInteraction(instruction) => {
+            println!("Invalid interaction: {}", instruction);
+        }
+    }
+}
+
+fn interactive_mode() {
+    println!("Grid App");
+
+    let mut grid = GridEngine::<GridContent>::new(8, 12);
+
+    loop {
+        // Reads some input from the user and prints it back
+        let mut input = String::new();
+        std::io::stdin().read_line(&mut input).unwrap();
+
+        let input = input.trim();
+
+        handle_interaction(&mut grid, Interaction::from_str(input));
+    }
+}
+
+fn scripted_mode() {
+    println!("Grid App");
+
+    let mut grid = GridEngine::<GridContent>::new(16, 12);
+
+    let instructions = vec![
+        //   x y w h itemContent
+        "add 2 2 2 4 1",
+        "print",
+        "add 4 2 2 4 2",
+        "print",
+        "add 0 0 2 2 2",
+        "print",
+        //  id
+        "rm 1",
+        "print",
+        "add 4 2 2 3 0",
+        "print",
+        "add 2 2 2 4 1",
+        "print",
+        "add 2 2 2 4 1",
+        "print",
+        "rm 5",
+        "print",
+        "add 2 2 2 4 1",
+        "print",
+        "rm 0",
+        "print",
+        // id x y
+        "mv 2 1 0",
+        "print",
+        "mv 2 2 0",
+        "print",
+        "mv 2 2 2",
+        "print",
+        "mv 2 3 2",
+        "print",
+    ];
+
+    // // For each add instruction create an id
+    // let mut ids: Vec<String> = vec![];
+    // instructions.iter().for_each(|instruction| {
+    //     let interaction = Interaction::from_str(instruction);
+    //     match interaction {
+    //         Interaction::AddItem(_, _, _, _, item) => {
+    //             ids.push(item);
+    //         }
+    //         _ => {}
+    //     }
+    // });
+
+    for instruction in instructions {
+        handle_interaction(&mut grid, Interaction::from_str(instruction));
+        thread::sleep(time::Duration::from_millis(200))
+    }
+}
+
+fn main() {
+    // interactive_mode();
+    scripted_mode();
+}
