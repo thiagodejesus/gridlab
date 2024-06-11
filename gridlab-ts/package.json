@@ -1,0 +1,16 @@
+{
+  "name": "gridlab-ts",
+  "version": "1.0.0",
+  "main": "index.js",
+  "license": "MIT",
+  "scripts": {
+    "start:dev": "ts-node src/index.ts"
+  },
+  "devDependencies": {
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.5"
+  },
+  "dependencies": {
+    "wasm-bindings": "../crates/wasm_bindings/pkg"
+  }
+}
