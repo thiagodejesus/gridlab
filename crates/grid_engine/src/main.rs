@@ -1,10 +1,10 @@
 use std::{thread, time};
 
-use grid_engine::grid_engine::{GridEngine, Node};
+use grid_engine::grid_engine::GridEngine;
 
 enum Interaction {
     PrintGrid,
-    AddItem(usize, usize, usize, usize, String),
+    AddItem(usize, usize, usize, usize),
     MoveItem(String, usize, usize),
     RemoveItem(String),
     InvalidInteraction(String),
@@ -41,8 +41,7 @@ impl Interaction {
                     .parse()
                     .expect("Expect h to be number");
 
-                let item = parts.next().unwrap_or("9");
-                Interaction::AddItem(x, y, w, h, item.to_string())
+                Interaction::AddItem(x, y, w, h)
             }
             "rm" => {
                 let id = parts.next().expect("Expect ID");
@@ -86,24 +85,24 @@ impl std::fmt::Display for GridContent {
     }
 }
 
-fn handle_interaction(grid: &mut GridEngine<GridContent>, interaction: Interaction) {
+fn handle_interaction(grid: &mut GridEngine, interaction: Interaction) {
     match interaction {
         Interaction::PrintGrid => {
             print!("\x1B[2J\x1B[1;1H");
             println!("Printing the grid");
             grid.print_grid();
         }
-        Interaction::AddItem(x, y, w, h, item) => {
+        Interaction::AddItem(x, y, w, h) => {
             println!("Adding item to the grid");
-            grid.add_item(x, y, w, h, GridContent { name: item });
+            grid.add_item(x, y, w, h).unwrap();
         }
         Interaction::RemoveItem(id) => {
             println!("Removing item {} from the grid", &id);
-            grid.remove_item(&id);
+            grid.remove_item(&id).unwrap();
         }
         Interaction::MoveItem(id, x, y) => {
             println!("Moving item {} to ({}, {})", &id, x, y);
-            grid.move_item(&id, x, y);
+            grid.move_item(&id, x, y).unwrap();
         }
         Interaction::InvalidInteraction(instruction) => {
             println!("Invalid interaction: {}", instruction);
@@ -111,26 +110,26 @@ fn handle_interaction(grid: &mut GridEngine<GridContent>, interaction: Interacti
     }
 }
 
-fn interactive_mode() {
-    println!("Grid App");
+// fn interactive_mode() {
+//     println!("Grid App");
 
-    let mut grid = GridEngine::<GridContent>::new(8, 12);
+//     let mut grid = GridEngine::new(8, 12);
 
-    loop {
-        // Reads some input from the user and prints it back
-        let mut input = String::new();
-        std::io::stdin().read_line(&mut input).unwrap();
+//     loop {
+//         // Reads some input from the user and prints it back
+//         let mut input = String::new();
+//         std::io::stdin().read_line(&mut input).unwrap();
 
-        let input = input.trim();
+//         let input = input.trim();
 
-        handle_interaction(&mut grid, Interaction::from_str(input));
-    }
-}
+//         handle_interaction(&mut grid, Interaction::from_str(input));
+//     }
+// }
 
 fn scripted_mode() {
     println!("Grid App");
 
-    let mut grid = GridEngine::<GridContent>::new(16, 12);
+    let mut grid = GridEngine::new(16, 12);
 
     let instructions = vec![
         //   x y w h itemContent

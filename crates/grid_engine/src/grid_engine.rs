@@ -1,8 +1,10 @@
+use crate::error::GridError;
 use grid::Grid;
-use std::{
-    collections::HashMap,
-    fmt::{Debug, Display},
-};
+use serde::{Deserialize, Serialize};
+use std::{collections::HashMap, fmt::Debug};
+
+// TODO, remove unnecessary clones
+// TODO, Handle all `UnhandledError``
 
 /// Executes the given callback function for each cell within the specified rectangular region.
 ///
@@ -13,39 +15,23 @@ use std::{
 /// * `w` - The width of the region.
 /// * `h` - The height of the region.
 /// * `callback` - A mutable reference to a function that takes the x and y coordinates of each cell as arguments.
-///
-/// # Example
-///
 /// ```
-/// fn print_coordinates(x: usize, y: usize) {
-///     println!("Cell coordinates: ({}, {})", x, y);
-/// }
-///
-/// for_cell(0, 0, 3, 3, &mut print_coordinates);
-/// // Output:
-/// // Cell coordinates: (0, 0)
-/// // Cell coordinates: (0, 1)
-/// // Cell coordinates: (0, 2)
-/// // Cell coordinates: (1, 0)
-/// // Cell coordinates: (1, 1)
-/// // Cell coordinates: (1, 2)
-/// // Cell coordinates: (2, 0)
-/// // Cell coordinates: (2, 1)
-/// // Cell coordinates: (2, 2)
-/// ```
-fn for_cell(x: usize, y: usize, w: usize, h: usize, callback: &mut impl FnMut(usize, usize)) {
+fn for_cell(
+    x: usize,
+    y: usize,
+    w: usize,
+    h: usize,
+    callback: &mut impl FnMut(usize, usize) -> Result<(), GridError>,
+) -> Result<(), GridError> {
     for x in x..x + w {
         for y in y..y + h {
-            callback(x, y);
+            callback(x, y)?;
         }
     }
+    Ok(())
 }
 
-/// Represents a node in the grid with its position, size, and content.
-///
-/// # Type Parameters
-///
-/// * `GridContent` - The type of content stored in the node.
+/// Represents a node in the grid with its position and size.
 ///
 /// # Fields
 ///
@@ -54,46 +40,18 @@ fn for_cell(x: usize, y: usize, w: usize, h: usize, callback: &mut impl FnMut(us
 /// * `y` - The y-coordinate of the top-left corner of the node.
 /// * `w` - The width of the node.
 /// * `h` - The height of the node.
-/// * `content` - The content stored in the node.
-///
-/// # Examples
-///
-/// ```
-/// let node = Node::new("1".to_string(), 0, 0, 2, 2, "Content");
-/// assert_eq!(node.id, "1");
-/// assert_eq!(node.x, 0);
-/// assert_eq!(node.y, 0);
-/// assert_eq!(node.w, 2);
-/// assert_eq!(node.h, 2);
-/// assert_eq!(node.content, "Content");
-/// ```
-#[derive(Clone, Debug)]
-pub struct Node<GridContent> {
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct Node {
     id: String,
     x: usize,
     y: usize,
     w: usize,
     h: usize,
-    content: GridContent,
 }
 
-impl<GridContent> Node<GridContent> {
-    fn new(
-        id: String,
-        x: usize,
-        y: usize,
-        w: usize,
-        h: usize,
-        content: GridContent,
-    ) -> Node<GridContent> {
-        Node {
-            id,
-            x,
-            y,
-            w,
-            h,
-            content,
-        }
+impl Node {
+    fn new(id: String, x: usize, y: usize, w: usize, h: usize) -> Node {
+        Node { id, x, y, w, h }
     }
 
     /// Executes the specified callback function for each cell within the node's boundaries.
@@ -101,20 +59,52 @@ impl<GridContent> Node<GridContent> {
     /// # Arguments
     ///
     /// * `callback` - A mutable reference to a function that takes the x and y coordinates of a cell as arguments.
-    fn for_cell(&self, callback: &mut impl FnMut(usize, usize)) {
-        for_cell(self.x, self.y, self.w, self.h, callback);
+    fn for_cell(
+        &self,
+        callback: &mut impl FnMut(usize, usize) -> Result<(), GridError>,
+    ) -> Result<(), GridError> {
+        for_cell(self.x, self.y, self.w, self.h, callback)
     }
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct AddChangeData {
+    value: Node,
+}
 
-/// Represents a grid engine that manages a grid of nodes with their positions, sizes, and content.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct RemoveChangeData {
+    value: Node,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct MoveChangeData {
+    old_value: Node,
+    new_value: Node,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+enum ChangeType {
+    Add(AddChangeData),
+    Remove(RemoveChangeData),
+    Move(MoveChangeData),
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct Change {
+    change_type: ChangeType,
+}
+
+impl Change {
+    fn new(change_type: ChangeType) -> Change {
+        Change { change_type }
+    }
+}
+
+/// Represents a grid engine that manages a grid of nodes with their positions and sizes.
 ///
 /// The `GridEngine` struct provides methods for adding, removing, and moving nodes within the grid.
 /// It handles collisions between nodes and ensures that they are placed correctly within the grid.
-///
-/// # Type Parameters
-///
-/// * `GridContent` - The type of content stored in the nodes.
 ///
 /// # Fields
 ///
@@ -125,10 +115,11 @@ impl<GridContent> Node<GridContent> {
 /// # Examples
 ///
 /// ```
+/// use grid_engine::grid_engine::GridEngine;
 /// let mut engine = GridEngine::new(10, 10);
 ///
 /// // Add a node to the grid
-/// let item_id = engine.add_item(0, 0, 2, 2, "Content");
+/// let item_id = engine.add_item(0, 0, 2, 2).unwrap();
 ///
 /// // Move the node to a new position
 /// engine.move_item(&item_id, 1, 1);
@@ -136,14 +127,15 @@ impl<GridContent> Node<GridContent> {
 /// // Remove the node from the grid
 /// engine.remove_item(&item_id);
 /// ```
-#[derive(Debug)]
-pub struct GridEngine<GridContent: Default + Display + Clone> {
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GridEngine {
     grid: Grid<Option<String>>,
-    items: HashMap<String, Node<GridContent>>,
+    items: HashMap<String, Node>,
     new_id: u32,
+    pending_changes: Vec<Change>,
 }
 
-impl<G: Default + Display + Clone + Debug> GridEngine<G> {
+impl GridEngine {
     /// Creates a new `GridEngine` instance with the specified number of rows and columns.
     ///
     /// # Arguments
@@ -154,11 +146,13 @@ impl<G: Default + Display + Clone + Debug> GridEngine<G> {
     /// # Returns
     ///
     /// A new `GridEngine` instance.
-    pub fn new(rows: usize, cols: usize) -> GridEngine<G> {
+    // #[wasm_bindgen(constructor)]
+    pub fn new(rows: usize, cols: usize) -> GridEngine {
         GridEngine {
             grid: Grid::new(rows, cols),
             items: HashMap::new(),
             new_id: 0,
+            pending_changes: Vec::new(),
         }
     }
 
@@ -170,15 +164,21 @@ impl<G: Default + Display + Clone + Debug> GridEngine<G> {
     /// * `y` - The y-coordinate of the top-left corner of the node.
     /// * `w` - The width of the node.
     /// * `h` - The height of the node.
-    /// * `content` - The content of the node.
     ///
     /// # Returns
     ///
     /// The newly created `Node`.
-    pub fn new_node(&mut self, x: usize, y: usize, w: usize, h: usize, content: G) -> Node<G> {
-        let node = Node::new(self.new_id.to_string(), x, y, w, h, content);
+    fn new_node(&mut self, x: usize, y: usize, w: usize, h: usize) -> Node {
+        let node = Node::new(self.new_id.to_string(), x, y, w, h);
         self.new_id += 1;
         node
+    }
+
+    fn create_add_change(&mut self, node: &Node) {
+        self.pending_changes
+            .push(Change::new(ChangeType::Add(AddChangeData {
+                value: node.clone(),
+            })));
     }
 
     /// Adds an item to the grid at the specified position.
@@ -189,32 +189,34 @@ impl<G: Default + Display + Clone + Debug> GridEngine<G> {
     /// * `y` - The y-coordinate of the top-left corner of the item.
     /// * `w` - The width of the item.
     /// * `h` - The height of the item.
-    /// * `content` - The content of the item.
     ///
     /// # Returns
     ///
     /// The ID of the added item.
-    pub fn add_item(&mut self, x: usize, y: usize, w: usize, h: usize, content: G) -> String {
-        let node = self.new_node(x, y, w, h, content);
+    pub fn add_item(
+        &mut self,
+        x: usize,
+        y: usize,
+        w: usize,
+        h: usize,
+    ) -> Result<String, GridError> {
+        let node = self.new_node(x, y, w, h);
+        let node_id = node.id.to_string();
 
         self.handle_collision(&node, x, y);
 
-        self.items.insert(node.id.to_string(), node.clone());
-        let grid = &mut self.grid;
-        node.for_cell(&mut |x, y| {
-            let element_at_position = grid.get_mut(y, x);
+        self.create_add_change(&node);
 
-            match element_at_position {
-                Some(cell) => {
-                    *cell = Some(node.id.to_string());
-                }
-                None => {
-                    println!("Error adding item to grid");
-                }
-            }
-        });
+        self.apply_changes();
 
-        node.id.to_string()
+        Ok(node_id)
+    }
+
+    fn create_remove_change(&mut self, node: &Node) {
+        self.pending_changes
+            .push(Change::new(ChangeType::Remove(RemoveChangeData {
+                value: node.clone(),
+            })));
     }
 
     /// Removes an item from the grid.
@@ -222,23 +224,17 @@ impl<G: Default + Display + Clone + Debug> GridEngine<G> {
     /// # Arguments
     ///
     /// * `id` - The ID of the item to remove.
-    pub fn remove_item(&mut self, id: &str) {
-        if let Some(node) = self.items.get(id) {
-            node.for_cell(&mut |x, y| {
-                let element_at_position = self.grid.get_mut(y, x);
-
-                match element_at_position {
-                    Some(cell) => {
-                        *cell = None;
-                    }
-                    None => {
-                        println!("Error removing item from grid");
-                    }
-                }
-            });
+    pub fn remove_item(&mut self, id: &str) -> Result<(), GridError> {
+        let node = match self.items.get(id) {
+            Some(node) => node,
+            None => Err(GridError::new("Item not found"))?,
         }
+        .clone();
 
-        self.items.remove(id);
+        self.create_remove_change(&node);
+
+        self.apply_changes();
+        Ok(())
     }
 
     /// Handles collisions between nodes and moves them if necessary.
@@ -248,14 +244,26 @@ impl<G: Default + Display + Clone + Debug> GridEngine<G> {
     /// * `node` - The node to check for collisions.
     /// * `x` - The x-coordinate of the top-left corner of the node.
     /// * `y` - The y-coordinate of the top-left corner of the node.
-    fn handle_collision(&mut self, node: &Node<G>, x: usize, y: usize) {
+    fn handle_collision(&mut self, node: &Node, x: usize, y: usize) {
         let collides_with = self.will_collides_with(node, x, y);
         if collides_with.len() > 0 {
             for collided_id in collides_with {
-                let collided = self.items.get(&collided_id).unwrap();
-                self.move_item(&collided_id, collided.x, y + node.h);
+                let collided = self.items.get(&collided_id).unwrap().clone();
+                self.create_move_change(&collided, collided.x, y + node.h);
             }
         }
+    }
+
+    fn create_move_change(&mut self, node: &Node, new_x: usize, new_y: usize) {
+        let old_node = node.clone();
+
+        self.handle_collision(node, new_x, new_y);
+
+        self.pending_changes
+            .push(Change::new(ChangeType::Move(MoveChangeData {
+                old_value: old_node,
+                new_value: Node::new(node.id.to_string(), new_x, new_y, node.w, node.h),
+            })));
     }
 
     /// Moves an item to a new position in the grid.
@@ -265,39 +273,91 @@ impl<G: Default + Display + Clone + Debug> GridEngine<G> {
     /// * `id` - The ID of the item to move.
     /// * `new_x` - The new x-coordinate of the top-left corner of the item.
     /// * `new_y` - The new y-coordinate of the top-left corner of the item.
-    pub fn move_item(&mut self, id: &str, new_x: usize, new_y: usize) {
-        if let Some(node) = self.items.get(id) {
-            self.handle_collision(&node.clone(), new_x, new_y);
+    pub fn move_item(&mut self, id: &str, new_x: usize, new_y: usize) -> Result<(), GridError> {
+        let node = match self.items.get(id) {
+            Some(node) => node,
+            None => Err(GridError::new("Item not found"))?,
+        };
 
-            let node = self.items.get_mut(id).unwrap();
-            node.for_cell(&mut |old_x, old_y| {
-                let element_at_position = self.grid.get_mut(old_y, old_x);
+        self.create_move_change(&node.clone(), new_x, new_y);
 
-                match element_at_position {
-                    Some(cell) => {
-                        *cell = None;
-                    }
-                    None => {
-                        println!("Error moving item from grid");
-                    }
+        self.apply_changes();
+
+        Ok(())
+    }
+
+    fn apply_changes(&mut self) {
+        for change in self.pending_changes.iter() {
+            match &change.change_type {
+                ChangeType::Add(data) => {
+                    let node = &data.value;
+
+                    node.for_cell(&mut |x, y| {
+                        let element_at_position = self.grid.get_mut(y, x);
+
+                        match element_at_position {
+                            Some(cell) => {
+                                *cell = Some(node.id.to_string());
+                                Ok(())
+                            }
+                            None => Err(GridError::new("Error adding item to grid")),
+                        }
+                    })
+                    .expect("UnhandledError");
+
+                    self.items.insert(node.id.to_string(), node.clone());
                 }
-            });
+                ChangeType::Remove(data) => {
+                    let node = &data.value;
 
-            node.x = new_x;
-            node.y = new_y;
+                    node.for_cell(&mut |x, y| {
+                        let element_at_position = self.grid.get_mut(y, x);
 
-            node.for_cell(&mut |x, y| {
-                let element_at_position = self.grid.get_mut(y, x);
+                        match element_at_position {
+                            Some(cell) => {
+                                *cell = None;
+                                Ok(())
+                            }
+                            None => Err(GridError::new("Error removing item from grid")),
+                        }
+                    })
+                    .expect("UnhandledError");
 
-                match element_at_position {
-                    Some(cell) => {
-                        *cell = Some(id.to_string());
-                    }
-                    None => {
-                        println!("Error moving item to grid");
-                    }
+                    self.items.remove(&node.id);
                 }
-            });
+                ChangeType::Move(data) => {
+                    let node = &data.new_value;
+                    let old_node = &data.old_value;
+
+                    old_node
+                        .for_cell(&mut |x, y| {
+                            let element_at_position = self.grid.get_mut(y, x);
+
+                            match element_at_position {
+                                Some(cell) => {
+                                    *cell = None;
+                                    Ok(())
+                                }
+                                None => Err(GridError::new("Error moving item from grid")),
+                            }
+                        })
+                        .expect("UnhandledError");
+
+                    self.items.insert(node.id.to_string(), node.clone());
+                    node.for_cell(&mut |x, y| {
+                        let element_at_position = self.grid.get_mut(y, x);
+
+                        match element_at_position {
+                            Some(cell) => {
+                                *cell = Some(node.id.to_string());
+                                Ok(())
+                            }
+                            None => Err(GridError::new("Error moving item to grid")),
+                        }
+                    })
+                    .expect("UnhandledError");
+                }
+            }
         }
     }
 
@@ -312,7 +372,7 @@ impl<G: Default + Display + Clone + Debug> GridEngine<G> {
     /// # Returns
     ///
     /// A vector containing the IDs of the nodes that the specified node will collide with.
-    pub fn will_collides_with(&self, node: &Node<G>, x: usize, y: usize) -> Vec<String> {
+    fn will_collides_with(&self, node: &Node, x: usize, y: usize) -> Vec<String> {
         let mut collides_with = Vec::new();
         for_cell(x, y, node.w, node.h, &mut |x, y| {
             if let Some(cell) = self.grid.get(y, x) {
@@ -322,7 +382,9 @@ impl<G: Default + Display + Clone + Debug> GridEngine<G> {
                     }
                 }
             }
-        });
+            Ok(())
+        })
+        .expect("UnhandledError");
 
         collides_with
     }
@@ -351,9 +413,10 @@ mod tests {
         let mut results = Vec::new();
         let mut callback = |x: usize, y: usize| {
             results.push((x, y));
+            Ok(())
         };
 
-        for_cell(1, 2, 2, 2, &mut callback);
+        for_cell(1, 2, 2, 2, &mut callback).unwrap();
 
         assert_eq!(results, vec![(1, 2), (1, 3), (2, 2), (2, 3)]);
     }
@@ -361,93 +424,114 @@ mod tests {
     #[test]
     fn test_add_item() {
         let mut engine = GridEngine::new(10, 10);
-        let item_0_id = engine.add_item(0, 0, 2, 2, 9);
+        let item_0_id = engine.add_item(0, 0, 2, 2).unwrap();
 
         assert!(engine.items.len() == 1);
         for_cell(0, 0, 2, 2, &mut |x, y| {
             assert_eq!(engine.grid.get(y, x).unwrap().as_ref().unwrap(), &item_0_id);
-        });
+            Ok(())
+        })
+        .unwrap();
     }
 
     #[test]
     fn test_add_item_handle_collision() {
         let mut engine = GridEngine::new(10, 10);
-        let item_0_id = engine.add_item(0, 0, 2, 2, 1);
-        let item_1_id = engine.add_item(0, 0, 2, 2, 2);
+        let item_0_id = engine.add_item(0, 0, 2, 2).unwrap();
+        let item_1_id = engine.add_item(0, 0, 2, 2).unwrap();
 
         // Item 0 should stay in position 0, 0
         let item_0 = engine.items.get(&item_0_id).unwrap();
         assert_eq!(item_0.x, 0);
         assert_eq!(item_0.y, 2);
-        item_0.for_cell(&mut |x, y| {
-            assert_eq!(engine.grid.get(y, x).unwrap().as_ref().unwrap(), &item_0_id);
-        });
+        item_0
+            .for_cell(&mut |x, y| {
+                assert_eq!(engine.grid.get(y, x).unwrap().as_ref().unwrap(), &item_0_id);
+                Ok(())
+            })
+            .unwrap();
 
         // Item 1 should go to position 0, 2
         let item_1 = engine.items.get(&item_1_id).unwrap();
         assert_eq!(item_1.x, 0);
         assert_eq!(item_1.y, 0);
-        item_1.for_cell(&mut |x, y| {
-            assert_eq!(engine.grid.get(y, x).unwrap().as_ref().unwrap(), &item_1_id);
-        });
+        item_1
+            .for_cell(&mut |x, y| {
+                assert_eq!(engine.grid.get(y, x).unwrap().as_ref().unwrap(), &item_1_id);
+                Ok(())
+            })
+            .unwrap();
     }
 
     #[test]
     fn test_remove_item() {
         let mut engine = GridEngine::new(10, 10);
-        let item_0_id = engine.add_item(0, 0, 2, 3, 9);
-        engine.remove_item(&item_0_id);
+        let item_0_id = engine.add_item(0, 0, 2, 3).unwrap();
+        engine.remove_item(&item_0_id).unwrap();
         for_cell(0, 0, 2, 3, &mut |x, y| {
             let value = engine.grid.get(y, x).unwrap();
             assert_eq!(value, &None);
-        });
+            Ok(())
+        })
+        .unwrap();
     }
 
     #[test]
     fn test_move_item() {
         let mut engine = GridEngine::new(10, 10);
-        let item_0_id = engine.add_item(0, 0, 2, 2, 9);
-        engine.move_item(&item_0_id, 1, 1);
+        let item_0_id = engine.add_item(0, 0, 2, 2).unwrap();
+        engine.move_item(&item_0_id, 1, 1).unwrap();
 
         // Asserts that its present on the new position
         for_cell(1, 1, 2, 2, &mut |x, y| {
-            assert_eq!(engine.grid.get(y, x).unwrap().as_ref().unwrap(), &item_0_id);
-        });
+            let item_on_expected_position = engine.grid.get(y, x).unwrap().as_ref().unwrap();
+            assert_eq!(item_on_expected_position, &item_0_id);
+            Ok(())
+        })
+        .unwrap();
 
         // Asserts that its not present on the old position
         for_cell(0, 0, 1, 1, &mut |x, y| {
             assert_eq!(engine.grid.get(y, x).unwrap(), &None);
-        });
+            Ok(())
+        })
+        .unwrap();
     }
 
     #[test]
     fn test_move_item_handle_collision() {
         let mut engine = GridEngine::new(10, 10);
-        let item_0_id = engine.add_item(0, 0, 2, 2, 1);
-        let item_1_id = engine.add_item(0, 2, 2, 2, 2);
-        engine.move_item("0", 0, 1);
+        let item_0_id = engine.add_item(0, 0, 2, 2).unwrap();
+        let item_1_id = engine.add_item(0, 2, 2, 2).unwrap();
+        engine.move_item("0", 0, 1).unwrap();
 
         // Item 0 should go to position 0, 1
         let item_0 = engine.items.get(&item_0_id).unwrap();
         assert_eq!(item_0.x, 0);
         assert_eq!(item_0.y, 1);
-        item_0.for_cell(&mut |x, y| {
-            assert_eq!(engine.grid.get(y, x).unwrap().as_ref().unwrap(), &item_0_id);
-        });
+        item_0
+            .for_cell(&mut |x, y| {
+                assert_eq!(engine.grid.get(y, x).unwrap().as_ref().unwrap(), &item_0_id);
+                Ok(())
+            })
+            .unwrap();
 
         // Item 1 should go to position 0, 3
         let item_1 = engine.items.get(&item_1_id).unwrap();
         assert_eq!(item_1.x, 0);
         assert_eq!(item_1.y, 3);
-        item_1.for_cell(&mut |x, y| {
-            assert_eq!(engine.grid.get(y, x).unwrap().as_ref().unwrap(), &item_1_id);
-        });
+        item_1
+            .for_cell(&mut |x, y| {
+                assert_eq!(engine.grid.get(y, x).unwrap().as_ref().unwrap(), &item_1_id);
+                Ok(())
+            })
+            .unwrap();
     }
 
     #[test]
     fn test_will_collides_with() {
         let mut engine = GridEngine::new(10, 10);
-        let item_0_id = engine.add_item(0, 0, 1, 2, 9);
+        let item_0_id = engine.add_item(0, 0, 1, 2).unwrap();
 
         // Asserts that does not collide with self
         assert_eq!(
@@ -462,7 +546,7 @@ mod tests {
         );
 
         // Asserts that collide with occupied position
-        let item_1_id = engine.add_item(1, 2, 1, 2, 5);
+        let item_1_id = engine.add_item(1, 2, 1, 2).unwrap();
 
         // Full collision
         assert_eq!(

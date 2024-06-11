@@ -1,3 +1,8 @@
+# Rust
 /target
 
 *.profraw
+
+# Js / Ts
+*/node_modules
+*/dist
