@@ -19,6 +19,9 @@ This is the source of a collaborative grid.
 - [ ] Handle collision pushing above
 
 - Expose the Grid to typescript
+- [] Integrate grid with gridstack
+  - [] Save gridstack state to the grid
+  
 - [] Create a web app that interacts with the Grid
 
 - Make the Grid collaborative
