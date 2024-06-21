@@ -4,7 +4,7 @@ use grid_engine::grid_engine::GridEngine;
 
 enum Interaction {
     PrintGrid,
-    AddItem(usize, usize, usize, usize),
+    AddItem(String, usize, usize, usize, usize),
     MoveItem(String, usize, usize),
     RemoveItem(String),
     InvalidInteraction(String),
@@ -20,6 +20,8 @@ impl Interaction {
             "print" => Interaction::PrintGrid,
             "add" => {
                 println!("{}", input);
+                let id = parts.next().expect("Expect id").to_string();
+
                 let x = parts
                     .next()
                     .expect("Expect X")
@@ -41,7 +43,7 @@ impl Interaction {
                     .parse()
                     .expect("Expect h to be number");
 
-                Interaction::AddItem(x, y, w, h)
+                Interaction::AddItem(id, x, y, w, h)
             }
             "rm" => {
                 let id = parts.next().expect("Expect ID");
@@ -92,9 +94,9 @@ fn handle_interaction(grid: &mut GridEngine, interaction: Interaction) {
             println!("Printing the grid");
             grid.print_grid();
         }
-        Interaction::AddItem(x, y, w, h) => {
+        Interaction::AddItem(id, x, y, w, h) => {
             println!("Adding item to the grid");
-            grid.add_item(x, y, w, h).unwrap();
+            grid.add_item(id, x, y, w, h).unwrap();
         }
         Interaction::RemoveItem(id) => {
             println!("Removing item {} from the grid", &id);
@@ -133,35 +135,35 @@ fn scripted_mode() {
 
     let instructions = vec![
         //   x y w h itemContent
-        "add 2 2 2 4 1",
+        "add a 2 2 2 4 1",
         "print",
-        "add 4 2 2 4 2",
+        "add b 4 2 2 4 2",
         "print",
-        "add 0 0 2 2 2",
+        "add c 0 2 2 2",
         "print",
         //  id
-        "rm 1",
+        "rm b",
         "print",
-        "add 4 2 2 3 0",
+        "add d 4 2 2 3 0",
         "print",
-        "add 2 2 2 4 1",
+        "add e 2 2 2 4 1",
         "print",
-        "add 2 2 2 4 1",
+        "add f 2 2 2 4 1",
         "print",
-        "rm 5",
+        "rm f",
         "print",
-        "add 2 2 2 4 1",
+        "add g 2 2 2 4 1",
         "print",
-        "rm 0",
+        "rm a",
         "print",
         // id x y
-        "mv 2 1 0",
+        "mv c 1 0",
         "print",
-        "mv 2 2 0",
+        "mv c 2 0",
         "print",
-        "mv 2 2 2",
+        "mv c 2 2",
         "print",
-        "mv 2 3 2",
+        "mv c 3 2",
         "print",
     ];
 

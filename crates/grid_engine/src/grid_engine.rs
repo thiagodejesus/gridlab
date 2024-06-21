@@ -41,12 +41,12 @@ fn for_cell(
 /// * `w` - The width of the node.
 /// * `h` - The height of the node.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-struct Node {
-    id: String,
-    x: usize,
-    y: usize,
-    w: usize,
-    h: usize,
+pub struct Node {
+    pub id: String,
+    pub x: usize,
+    pub y: usize,
+    pub w: usize,
+    pub h: usize,
 }
 
 impl Node {
@@ -110,7 +110,6 @@ impl Change {
 ///
 /// * `grid` - The grid that holds the nodes.
 /// * `items` - A hashmap that maps node IDs to their corresponding nodes.
-/// * `new_id` - The ID to be assigned to the next node added to the grid.
 ///
 /// # Examples
 ///
@@ -119,7 +118,7 @@ impl Change {
 /// let mut engine = GridEngine::new(10, 10);
 ///
 /// // Add a node to the grid
-/// let item_id = engine.add_item(0, 0, 2, 2).unwrap();
+/// let item_id = engine.add_item("0".to_string(), 0, 0, 2, 2).unwrap();
 ///
 /// // Move the node to a new position
 /// engine.move_item(&item_id, 1, 1);
@@ -131,7 +130,6 @@ impl Change {
 pub struct GridEngine {
     grid: Grid<Option<String>>,
     items: HashMap<String, Node>,
-    new_id: u32,
     pending_changes: Vec<Change>,
 }
 
@@ -151,7 +149,6 @@ impl GridEngine {
         GridEngine {
             grid: Grid::new(rows, cols),
             items: HashMap::new(),
-            new_id: 0,
             pending_changes: Vec::new(),
         }
     }
@@ -168,9 +165,8 @@ impl GridEngine {
     /// # Returns
     ///
     /// The newly created `Node`.
-    fn new_node(&mut self, x: usize, y: usize, w: usize, h: usize) -> Node {
-        let node = Node::new(self.new_id.to_string(), x, y, w, h);
-        self.new_id += 1;
+    fn new_node(&mut self, id: String, x: usize, y: usize, w: usize, h: usize) -> Node {
+        let node = Node::new(id, x, y, w, h);
         node
     }
 
@@ -195,12 +191,17 @@ impl GridEngine {
     /// The ID of the added item.
     pub fn add_item(
         &mut self,
+        id: String,
         x: usize,
         y: usize,
         w: usize,
         h: usize,
     ) -> Result<String, GridError> {
-        let node = self.new_node(x, y, w, h);
+        if self.items.get(&id).is_some() {
+            return Err(GridError::new("Id already exists"));
+        };
+
+        let node = self.new_node(id, x, y, w, h);
         let node_id = node.id.to_string();
 
         self.handle_collision(&node, x, y);
@@ -389,6 +390,10 @@ impl GridEngine {
         collides_with
     }
 
+    pub fn get_nodes(&self) -> Vec<Node> {
+        self.items.values().cloned().collect()
+    }
+
     /// Prints the grid to the console.
     pub fn print_grid(&self) {
         self.grid.iter_rows().for_each(|row| {
@@ -424,7 +429,7 @@ mod tests {
     #[test]
     fn test_add_item() {
         let mut engine = GridEngine::new(10, 10);
-        let item_0_id = engine.add_item(0, 0, 2, 2).unwrap();
+        let item_0_id = engine.add_item("0".to_string(), 0, 0, 2, 2).unwrap();
 
         assert!(engine.items.len() == 1);
         for_cell(0, 0, 2, 2, &mut |x, y| {
@@ -435,10 +440,18 @@ mod tests {
     }
 
     #[test]
+    fn test_add_item_handle_duplicated_id() {
+        let mut engine = GridEngine::new(10, 10);
+        let item_0_id = engine.add_item("0".to_string(), 0, 0, 2, 2).unwrap();
+
+        assert!(engine.add_item("0".to_string(), 0, 0, 2, 2).is_err())
+    }
+
+    #[test]
     fn test_add_item_handle_collision() {
         let mut engine = GridEngine::new(10, 10);
-        let item_0_id = engine.add_item(0, 0, 2, 2).unwrap();
-        let item_1_id = engine.add_item(0, 0, 2, 2).unwrap();
+        let item_0_id = engine.add_item("0".to_string(), 0, 0, 2, 2).unwrap();
+        let item_1_id = engine.add_item("1".to_string(), 0, 0, 2, 2).unwrap();
 
         // Item 0 should stay in position 0, 0
         let item_0 = engine.items.get(&item_0_id).unwrap();
@@ -466,7 +479,7 @@ mod tests {
     #[test]
     fn test_remove_item() {
         let mut engine = GridEngine::new(10, 10);
-        let item_0_id = engine.add_item(0, 0, 2, 3).unwrap();
+        let item_0_id = engine.add_item("0".to_string(), 0, 0, 2, 3).unwrap();
         engine.remove_item(&item_0_id).unwrap();
         for_cell(0, 0, 2, 3, &mut |x, y| {
             let value = engine.grid.get(y, x).unwrap();
@@ -479,7 +492,7 @@ mod tests {
     #[test]
     fn test_move_item() {
         let mut engine = GridEngine::new(10, 10);
-        let item_0_id = engine.add_item(0, 0, 2, 2).unwrap();
+        let item_0_id = engine.add_item("0".to_string(), 0, 0, 2, 2).unwrap();
         engine.move_item(&item_0_id, 1, 1).unwrap();
 
         // Asserts that its present on the new position
@@ -501,8 +514,8 @@ mod tests {
     #[test]
     fn test_move_item_handle_collision() {
         let mut engine = GridEngine::new(10, 10);
-        let item_0_id = engine.add_item(0, 0, 2, 2).unwrap();
-        let item_1_id = engine.add_item(0, 2, 2, 2).unwrap();
+        let item_0_id = engine.add_item("0".to_string(), 0, 0, 2, 2).unwrap();
+        let item_1_id = engine.add_item("1".to_string(), 0, 2, 2, 2).unwrap();
         engine.move_item("0", 0, 1).unwrap();
 
         // Item 0 should go to position 0, 1
@@ -531,7 +544,7 @@ mod tests {
     #[test]
     fn test_will_collides_with() {
         let mut engine = GridEngine::new(10, 10);
-        let item_0_id = engine.add_item(0, 0, 1, 2).unwrap();
+        let item_0_id = engine.add_item("0".to_string(), 0, 0, 1, 2).unwrap();
 
         // Asserts that does not collide with self
         assert_eq!(
@@ -546,7 +559,7 @@ mod tests {
         );
 
         // Asserts that collide with occupied position
-        let item_1_id = engine.add_item(1, 2, 1, 2).unwrap();
+        let item_1_id = engine.add_item("0".to_string(), 1, 2, 1, 2).unwrap();
 
         // Full collision
         assert_eq!(
@@ -559,5 +572,17 @@ mod tests {
             engine.will_collides_with(&engine.items.get(&item_0_id).unwrap(), 1, 1),
             vec![item_1_id.clone()]
         );
+    }
+
+    #[test]
+    fn get_nodes() {
+        let mut engine = GridEngine::new(10, 10);
+        let item_0_id = engine.add_item("0".to_string(), 0, 0, 2, 2).unwrap();
+        let item_1_id = engine.add_item("1".to_string(), 0, 2, 2, 2).unwrap();
+
+        let nodes = engine.get_nodes();
+        assert_eq!(nodes.len(), 2);
+        assert_eq!(nodes[0].id, item_0_id);
+        assert_eq!(nodes[1].id, item_1_id);
     }
 }
