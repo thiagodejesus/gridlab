@@ -40,7 +40,7 @@ fn for_cell(
 /// * `y` - The y-coordinate of the top-left corner of the node.
 /// * `w` - The width of the node.
 /// * `h` - The height of the node.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Node {
     pub id: String,
     pub x: usize,
@@ -114,7 +114,7 @@ impl Change {
 /// # Examples
 ///
 /// ```
-/// use grid_engine::grid_engine::GridEngine;
+/// use grid_engine::engine::GridEngine;
 /// let mut engine = GridEngine::new(10, 10);
 ///
 /// // Add a node to the grid
@@ -150,6 +150,16 @@ impl GridEngine {
             grid: Grid::new(rows, cols),
             items: HashMap::new(),
             pending_changes: Vec::new(),
+        }
+    }
+
+    pub fn from_str(serialized: &str) -> Result<GridEngine, GridError> {
+        match serde_json::from_str(serialized) {
+            Ok(engine) => Ok(engine),
+            Err(err) => {
+                println!("Error deserializing GridEngine {:?}", err);
+                Err(GridError::new("Error deserializing GridEngine"))
+            }
         }
     }
 
@@ -390,23 +400,39 @@ impl GridEngine {
         collides_with
     }
 
+    /// Get the nodes sorted by id
     pub fn get_nodes(&self) -> Vec<Node> {
-        self.items.values().cloned().collect()
+        let mut cloned: Vec<Node> = self.items.values().cloned().collect();
+        // Would be better to sort by some created_at
+        cloned.sort_by_key(|n| n.id.clone());
+        cloned
     }
 
-    /// Prints the grid to the console.
+    /// Prints answer of get_grid_formatted
     pub fn print_grid(&self) {
+        println!("{}", self.get_grid_formatted());
+    }
+
+    /// Format grid nodes to string
+    pub fn get_grid_formatted(&self) -> String {
+        let mut grid_str = String::new();
         self.grid.iter_rows().for_each(|row| {
             row.for_each(|cell| match cell {
                 Some(item) => {
-                    print!("[{}]", item);
+                    grid_str.push_str(&format!("[{}]", item));
                 }
                 None => {
-                    print!("[ ]");
+                    grid_str.push_str("[ ]");
                 }
             });
-            println!();
+            grid_str.push_str("\n");
         });
+
+        grid_str
+    }
+
+    pub fn serialized_as_str(&self) -> String {
+        serde_json::to_string(self).unwrap()
     }
 }
 
@@ -559,7 +585,7 @@ mod tests {
         );
 
         // Asserts that collide with occupied position
-        let item_1_id = engine.add_item("0".to_string(), 1, 2, 1, 2).unwrap();
+        let item_1_id = engine.add_item("1".to_string(), 1, 2, 1, 2).unwrap();
 
         // Full collision
         assert_eq!(
@@ -575,7 +601,7 @@ mod tests {
     }
 
     #[test]
-    fn get_nodes() {
+    fn test_get_nodes() {
         let mut engine = GridEngine::new(10, 10);
         let item_0_id = engine.add_item("0".to_string(), 0, 0, 2, 2).unwrap();
         let item_1_id = engine.add_item("1".to_string(), 0, 2, 2, 2).unwrap();
@@ -584,5 +610,21 @@ mod tests {
         assert_eq!(nodes.len(), 2);
         assert_eq!(nodes[0].id, item_0_id);
         assert_eq!(nodes[1].id, item_1_id);
+    }
+
+    #[test]
+    fn test_serialize_and_deserialize() {
+        let mut engine = GridEngine::new(10, 10);
+        engine.add_item("0".to_string(), 0, 0, 2, 2).unwrap();
+        engine.add_item("1".to_string(), 0, 2, 2, 2).unwrap();
+
+        let serialized = engine.serialized_as_str();
+        let deserialized_engine = GridEngine::from_str(&serialized).unwrap();
+
+        assert_eq!(engine.get_nodes(), deserialized_engine.get_nodes());
+        assert_eq!(
+            engine.get_grid_formatted(),
+            deserialized_engine.get_grid_formatted()
+        );
     }
 }

@@ -1,2 +1,2 @@
-pub mod grid_engine;
+pub mod engine;
 mod error;

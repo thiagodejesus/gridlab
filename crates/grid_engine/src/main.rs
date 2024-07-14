@@ -1,6 +1,6 @@
 use std::{thread, time};
 
-use grid_engine::grid_engine::GridEngine;
+use grid_engine::engine::GridEngine;
 
 enum Interaction {
     PrintGrid,
