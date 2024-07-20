@@ -1,6 +1,6 @@
 use std::{thread, time};
 
-use grid_engine::engine::GridEngine;
+use grid_engine::engine::{EventName, GridEngine};
 
 enum Interaction {
     PrintGrid,
@@ -133,6 +133,26 @@ fn scripted_mode() {
 
     let mut grid = GridEngine::new(16, 12);
 
+    grid.events.add_listener(
+        EventName::Change,
+        Box::new(|event| match event {
+            grid_engine::engine::EventValue::Change(change) => {
+                println!("Change: {:?}", change);
+            }
+            _ => {}
+        }),
+    );
+
+    grid.events.add_listener(
+        EventName::BatchChange,
+        Box::new(|event| match event {
+            grid_engine::engine::EventValue::BatchChange(events) => {
+                println!("BatchChange: {:?}", events);
+            }
+            _ => {}
+        }),
+    );
+
     let instructions = vec![
         //   x y w h itemContent
         "add a 2 2 2 4 1",
@@ -166,18 +186,6 @@ fn scripted_mode() {
         "mv c 3 2",
         "print",
     ];
-
-    // // For each add instruction create an id
-    // let mut ids: Vec<String> = vec![];
-    // instructions.iter().for_each(|instruction| {
-    //     let interaction = Interaction::from_str(instruction);
-    //     match interaction {
-    //         Interaction::AddItem(_, _, _, _, item) => {
-    //             ids.push(item);
-    //         }
-    //         _ => {}
-    //     }
-    // });
 
     for instruction in instructions {
         handle_interaction(&mut grid, Interaction::from_str(instruction));

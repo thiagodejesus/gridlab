@@ -1,4 +1,4 @@
-pub use grid_engine::grid_engine::*;
+pub use grid_engine::engine::*;
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
@@ -78,5 +78,18 @@ impl GridEngineWasm {
                 w: node.w,
             })
             .collect()
+    }
+
+    #[wasm_bindgen(js_name = serializedAsStr)]
+    pub fn serialized_as_str(&self) -> String {
+        self.grid_engine.serialized_as_str()
+    }
+
+    #[wasm_bindgen(js_name = fromSerializedStr)]
+    pub fn from_serialized_str(serialized_str: &str) -> Result<GridEngineWasm, JsError> {
+        match GridEngine::from_str(serialized_str) {
+            Ok(grid_engine) => Ok(GridEngineWasm { grid_engine }),
+            Err(e) => Err(JsError::new(&e.get_message())),
+        }
     }
 }

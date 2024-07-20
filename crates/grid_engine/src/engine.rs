@@ -1,4 +1,4 @@
-use crate::error::GridError;
+use crate::{engine_events::EventListener, error::GridError};
 use grid::Grid;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fmt::Debug};
@@ -40,7 +40,7 @@ fn for_cell(
 /// * `y` - The y-coordinate of the top-left corner of the node.
 /// * `w` - The width of the node.
 /// * `h` - The height of the node.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct Node {
     pub id: String,
     pub x: usize,
@@ -67,31 +67,35 @@ impl Node {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+/// Represents the data for an add change operation.
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq, Hash)]
 struct AddChangeData {
     value: Node,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+/// Represents the data for an remove change operation
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq, Hash)]
 struct RemoveChangeData {
     value: Node,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+/// Represents the data for an move change operation
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq, Hash)]
 struct MoveChangeData {
     old_value: Node,
     new_value: Node,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+/// Change operation types
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq, Hash)]
 enum ChangeType {
     Add(AddChangeData),
     Remove(RemoveChangeData),
     Move(MoveChangeData),
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-struct Change {
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq, Hash)]
+pub struct Change {
     change_type: ChangeType,
 }
 
@@ -99,6 +103,18 @@ impl Change {
     fn new(change_type: ChangeType) -> Change {
         Change { change_type }
     }
+}
+
+#[derive(Debug, Eq, PartialEq, Hash)]
+pub enum EventValue {
+    Change(Change),
+    BatchChange(Vec<Change>),
+}
+
+#[derive(PartialEq, Eq, Hash, Debug)]
+pub enum EventName {
+    Change,
+    BatchChange,
 }
 
 /// Represents a grid engine that manages a grid of nodes with their positions and sizes.
@@ -131,6 +147,8 @@ pub struct GridEngine {
     grid: Grid<Option<String>>,
     items: HashMap<String, Node>,
     pending_changes: Vec<Change>,
+    #[serde(skip)]
+    pub events: EventListener<EventName, EventValue>,
 }
 
 impl GridEngine {
@@ -150,6 +168,7 @@ impl GridEngine {
             grid: Grid::new(rows, cols),
             items: HashMap::new(),
             pending_changes: Vec::new(),
+            events: EventListener::default(),
         }
     }
 
@@ -298,7 +317,21 @@ impl GridEngine {
     }
 
     fn apply_changes(&mut self) {
+        // Needs to think if the events should be triggered before or after the changes
+        self.events.trigger_event(
+            EventName::BatchChange,
+            EventValue::BatchChange(
+                self.pending_changes
+                    .iter()
+                    .map(|change| change.clone())
+                    .collect(),
+            ),
+        );
+
         for change in self.pending_changes.iter() {
+            self.events
+                .trigger_event(EventName::Change, EventValue::Change(change.clone()));
+
             match &change.change_type {
                 ChangeType::Add(data) => {
                     let node = &data.value;
@@ -370,6 +403,8 @@ impl GridEngine {
                 }
             }
         }
+        // Needs to think if could exists a problem of possibly not processed changes being also removed.
+        self.pending_changes.clear();
     }
 
     /// Checks if a node will collide with any other nodes at the specified position.
