@@ -451,9 +451,9 @@ impl GridEngine {
         let mut collides_with = Vec::new();
         for_cell(x, y, node.w, node.h, &mut |x, y| {
             if let Some(cell) = self.grid.get(y, x) {
-                let cell_ref = cell.as_ref().expect("Failed to get cell ref");
-                if cell.is_some() && cell_ref != &node.id {
-                    if !collides_with.contains(&cell_ref.to_string()) {
+                if cell.is_some() {
+                    let cell_ref = cell.as_ref().expect("Failed to get cell ref");
+                    if cell_ref != &node.id && !collides_with.contains(&cell_ref.to_string()) {
                         collides_with.push(cell_ref.to_string());
                     }
                 }
