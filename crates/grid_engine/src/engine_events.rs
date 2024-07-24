@@ -25,7 +25,6 @@ impl<EventValue: EventValueTrait> Debug for ListenerFunctionWithId<EventValue> {
 
 #[derive(Debug)]
 pub struct EventListener<EventName: EventNameTrait, EventValue: EventValueTrait> {
-    // Maybe i need to split the event name and value
     listeners: HashMap<EventName, Vec<ListenerFunctionWithId<EventValue>>>,
 }
 
@@ -45,7 +44,7 @@ impl<EventName: EventNameTrait, EventValue: EventValueTrait> EventListener<Event
         event: EventName,
         function: Box<ListenerFunction<EventValue>>,
     ) -> String {
-        let id = uuid::Uuid::now_v7().to_string();
+        let id = uuid::Uuid::new_v4().to_string();
         let listener = ListenerFunctionWithId {
             id: id.clone(),
             function,

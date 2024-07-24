@@ -2,9 +2,13 @@ use crate::{engine_events::EventListener, error::GridError};
 use grid::Grid;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fmt::Debug};
+use tsify_next::Tsify;
+use wasm_bindgen::prelude::*;
+extern crate console_error_panic_hook;
 
 // TODO, remove unnecessary clones
-// TODO, Handle all `UnhandledError``
+// TODO, Handle all `expect` and `unwrap` properly
+// TODO, set wasm as a optional feature
 
 /// Executes the given callback function for each cell within the specified rectangular region.
 ///
@@ -41,7 +45,9 @@ fn for_cell(
 /// * `w` - The width of the node.
 /// * `h` - The height of the node.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[wasm_bindgen]
 pub struct Node {
+    #[wasm_bindgen(skip)]
     pub id: String,
     pub x: usize,
     pub y: usize,
@@ -49,9 +55,15 @@ pub struct Node {
     pub h: usize,
 }
 
+#[wasm_bindgen]
 impl Node {
     fn new(id: String, x: usize, y: usize, w: usize, h: usize) -> Node {
         Node { id, x, y, w, h }
+    }
+
+    #[wasm_bindgen(js_name = getId)]
+    pub fn get_id(&self) -> String {
+        self.id.clone()
     }
 
     /// Executes the specified callback function for each cell within the node's boundaries.
@@ -68,50 +80,61 @@ impl Node {
 }
 
 /// Represents the data for an add change operation.
-#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq, Hash)]
-struct AddChangeData {
-    value: Node,
+#[wasm_bindgen]
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq, Hash, Tsify)]
+pub struct AddChangeData {
+    #[wasm_bindgen(skip)]
+    pub value: Node,
 }
 
 /// Represents the data for an remove change operation
-#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq, Hash)]
-struct RemoveChangeData {
-    value: Node,
+#[wasm_bindgen]
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq, Hash, Tsify)]
+pub struct RemoveChangeData {
+    #[wasm_bindgen(skip)]
+    pub value: Node,
 }
 
 /// Represents the data for an move change operation
-#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq, Hash)]
-struct MoveChangeData {
-    old_value: Node,
-    new_value: Node,
+#[wasm_bindgen]
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq, Hash, Tsify)]
+pub struct MoveChangeData {
+    #[wasm_bindgen(skip)]
+    pub old_value: Node,
+    #[wasm_bindgen(skip)]
+    pub new_value: Node,
 }
 
 /// Change operation types
-#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq, Hash)]
-enum ChangeType {
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq, Hash, Tsify)]
+#[serde(tag = "type", content = "value")]
+pub enum ChangeType {
     Add(AddChangeData),
     Remove(RemoveChangeData),
     Move(MoveChangeData),
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq, Hash, Tsify)]
 pub struct Change {
-    change_type: ChangeType,
+    pub change_type: ChangeType,
 }
 
+#[wasm_bindgen]
 impl Change {
     fn new(change_type: ChangeType) -> Change {
         Change { change_type }
     }
 }
 
-#[derive(Debug, Eq, PartialEq, Hash)]
+#[derive(Debug, Eq, PartialEq, Hash, Clone, Serialize, Deserialize, Tsify)]
+#[serde(tag = "type", content = "value")]
 pub enum EventValue {
     Change(Change),
     BatchChange(Vec<Change>),
 }
 
-#[derive(PartialEq, Eq, Hash, Debug)]
+#[wasm_bindgen]
+#[derive(PartialEq, Eq, Hash, Debug, Serialize, Deserialize)]
 pub enum EventName {
     Change,
     BatchChange,
@@ -164,6 +187,8 @@ impl GridEngine {
     /// A new `GridEngine` instance.
     // #[wasm_bindgen(constructor)]
     pub fn new(rows: usize, cols: usize) -> GridEngine {
+        console_error_panic_hook::set_once();
+
         GridEngine {
             grid: Grid::new(rows, cols),
             items: HashMap::new(),
@@ -278,7 +303,11 @@ impl GridEngine {
         let collides_with = self.will_collides_with(node, x, y);
         if collides_with.len() > 0 {
             for collided_id in collides_with {
-                let collided = self.items.get(&collided_id).unwrap().clone();
+                let collided = self
+                    .items
+                    .get(&collided_id)
+                    .expect("Failed to get collided node")
+                    .clone();
                 self.create_move_change(&collided, collided.x, y + node.h);
             }
         }
@@ -422,9 +451,10 @@ impl GridEngine {
         let mut collides_with = Vec::new();
         for_cell(x, y, node.w, node.h, &mut |x, y| {
             if let Some(cell) = self.grid.get(y, x) {
-                if cell.is_some() && cell.as_ref().unwrap() != &node.id {
-                    if !collides_with.contains(&cell.as_ref().unwrap().to_string()) {
-                        collides_with.push(cell.as_ref().unwrap().to_string());
+                let cell_ref = cell.as_ref().expect("Failed to get cell ref");
+                if cell.is_some() && cell_ref != &node.id {
+                    if !collides_with.contains(&cell_ref.to_string()) {
+                        collides_with.push(cell_ref.to_string());
                     }
                 }
             }
@@ -467,7 +497,7 @@ impl GridEngine {
     }
 
     pub fn serialized_as_str(&self) -> String {
-        serde_json::to_string(self).unwrap()
+        serde_json::to_string(self).expect("Failed to serialize GridEngine")
     }
 }
 

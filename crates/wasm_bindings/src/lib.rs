@@ -2,26 +2,15 @@ pub use grid_engine::engine::*;
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
+/// Some types for the TS bindings.
+extern "C" {
+    #[wasm_bindgen(extends = js_sys::Function, typescript_type = "(value: EventValue) => void")]
+    pub type EventListenerCallback;
+}
+
+#[wasm_bindgen]
 pub struct GridEngineWasm {
     grid_engine: GridEngine,
-}
-
-#[wasm_bindgen]
-pub struct NodeWasm {
-    node: Node,
-    #[wasm_bindgen(js_name = x)]
-    pub x: usize,
-    pub y: usize,
-    pub w: usize,
-    pub h: usize,
-}
-
-#[wasm_bindgen]
-impl NodeWasm {
-    #[wasm_bindgen(js_name = getId)]
-    pub fn get_id(&self) -> String {
-        self.node.id.clone()
-    }
 }
 
 #[wasm_bindgen]
@@ -65,19 +54,8 @@ impl GridEngineWasm {
     }
 
     #[wasm_bindgen(js_name = getNodes)]
-    pub fn get_nodes(&self) -> Vec<NodeWasm> {
-        let nodes = self.grid_engine.get_nodes();
-
-        nodes
-            .iter()
-            .map(|node| NodeWasm {
-                node: node.clone(),
-                x: node.x,
-                y: node.y,
-                h: node.h,
-                w: node.w,
-            })
-            .collect()
+    pub fn get_nodes(&self) -> Vec<Node> {
+        self.grid_engine.get_nodes()
     }
 
     #[wasm_bindgen(js_name = serializedAsStr)]
@@ -91,5 +69,26 @@ impl GridEngineWasm {
             Ok(grid_engine) => Ok(GridEngineWasm { grid_engine }),
             Err(e) => Err(JsError::new(&e.get_message())),
         }
+    }
+
+    #[wasm_bindgen(js_name = addEventListener)]
+    pub fn add_event_listener(
+        &mut self,
+        event_name: EventName,
+        listener_callback: EventListenerCallback,
+    ) {
+        self.grid_engine.events.add_listener(
+            event_name,
+            Box::new(move |event_value| {
+                let this = JsValue::null();
+                listener_callback
+                    .call1(
+                        &this,
+                        &serde_wasm_bindgen::to_value(event_value)
+                            .expect("Failed to parse event_value"),
+                    )
+                    .expect("Failed to call listener_callback");
+            }),
+        );
     }
 }
