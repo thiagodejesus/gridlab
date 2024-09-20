@@ -93,10 +93,21 @@ const scriptedMode = async () => {
     "mv c 2 0",
     "mv c 2 2",
     "mv c 3 2",
+    // "mv c 4 10",
+    // "mv c 4 6",
+    // "mv d 1 1",
+    // "mv c 4 6", // Bug
   ];
+  let i = 1;
   for (const command of commands) {
+    i++
+    // if(i === commands.length) {
+    //   setTimeout(() => {
+    //     process.exit()
+    //   }, 150)
+    // }
     await handleCommand(grid, command);
-    await sleep(1250);
+    await sleep(1000);
     // printInterface(grid);
   }
   // Interactive mode

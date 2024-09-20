@@ -1,6 +1,7 @@
 pub use grid_engine::grid_engine::*;
 pub use grid_engine::grid_view::*;
 use wasm_bindgen::prelude::*;
+extern crate console_error_panic_hook;
 
 #[wasm_bindgen]
 /// Some types for the TS bindings.
@@ -64,6 +65,8 @@ pub struct GridEngineWasm {
 impl GridEngineWasm {
     #[wasm_bindgen(constructor)]
     pub fn new(rows: usize, cols: usize) -> GridEngineWasm {
+        console_error_panic_hook::set_once();
+        
         GridEngineWasm {
             grid_engine: GridEngine::new(rows, cols),
         }
@@ -115,12 +118,12 @@ impl GridEngineWasm {
         self.grid_engine.get_grid_view().get_grid_formatted()
     }
 
-    #[wasm_bindgen(js_name = applyExternalChanges)]
-    pub fn apply_external_changes(&mut self, changes: Changes) -> Result<(), JsError> {
+    #[wasm_bindgen(js_name = applyChanges)]
+    pub fn apply_changes(&mut self, changes: Changes) -> Result<(), JsError> {
         log(&format!("Args received, {:?}", changes));
         let changes: Vec<Change> = serde_wasm_bindgen::from_value(changes.obj)?;
         log(&format!("Changes parsed, {:?}", changes));
-        self.grid_engine.apply_external_changes(changes);
+        self.grid_engine.apply_changes(&changes);
         Ok(())
     }
 

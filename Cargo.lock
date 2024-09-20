@@ -63,7 +63,6 @@ dependencies = [
 name = "grid-engine"
 version = "0.1.0"
 dependencies = [
- "console_error_panic_hook",
  "grid",
  "serde",
  "serde_json",
@@ -298,6 +297,7 @@ checksum = "af190c94f2773fdb3729c55b007a722abb5384da03bc0986df4c289bf5567e96"
 name = "wasm-bindings"
 version = "0.1.0"
 dependencies = [
+ "console_error_panic_hook",
  "getrandom",
  "grid-engine",
  "js-sys",

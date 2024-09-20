@@ -38,17 +38,31 @@ impl GridView {
     /// Format grid nodes to string
     pub fn get_grid_formatted(&self) -> String {
         let mut grid_str = String::new();
-        self.grid.iter_rows().for_each(|row| {
-            row.for_each(|cell| match cell {
-                Some(item) => {
-                    grid_str.push_str(&format!("[{}]", item));
-                }
-                None => {
-                    grid_str.push_str("[ ]");
-                }
+        grid_str.push_str("  ");
+        for i in 0..self.grid.cols() {
+            grid_str.push_str(&format!(" {} ", i));
+        }
+        grid_str.push_str("\n");
+
+        self.grid
+            .iter_rows()
+            .enumerate()
+            .for_each(|(row_number, row)| {
+                row.enumerate().for_each(|(index, cell)| {
+                    if index == 0 {
+                        grid_str.push_str(&format!("{:0>2}", row_number));
+                    }
+                    return match cell {
+                        Some(item) => {
+                            grid_str.push_str(&format!("[{}]", item));
+                        }
+                        None => {
+                            grid_str.push_str("[ ]");
+                        }
+                    };
+                });
+                grid_str.push_str("\n");
             });
-            grid_str.push_str("\n");
-        });
 
         grid_str
     }

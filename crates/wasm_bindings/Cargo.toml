@@ -12,3 +12,4 @@ grid-engine = { path = "../grid_engine" }
 serde-wasm-bindgen = "0.6.5"
 js-sys = "0.3.69"
 getrandom = { version = "*", features = ["js"] }
+console_error_panic_hook = "0.1.7"

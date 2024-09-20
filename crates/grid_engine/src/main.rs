@@ -3,7 +3,6 @@ use std::{thread, time};
 use grid_engine::grid_engine::{EventName, GridEngine};
 
 enum Interaction {
-    PrintGrid,
     AddItem(String, usize, usize, usize, usize),
     MoveItem(String, usize, usize),
     RemoveItem(String),
@@ -17,7 +16,6 @@ impl Interaction {
         let action = parts.next().unwrap_or("");
 
         match action {
-            "print" => Interaction::PrintGrid,
             "add" => {
                 println!("{}", input);
                 let id = parts.next().expect("Expect id").to_string();
@@ -87,13 +85,14 @@ impl std::fmt::Display for GridContent {
     }
 }
 
+fn print_grid(grid: &mut GridEngine) {
+    // print!("\x1B[2J\x1B[1;1H");
+    println!("Printing the grid");
+    grid.get_grid_view().print_grid();
+}
+
 fn handle_interaction(grid: &mut GridEngine, interaction: Interaction) {
     match interaction {
-        Interaction::PrintGrid => {
-            print!("\x1B[2J\x1B[1;1H");
-            println!("Printing the grid");
-            grid.get_grid_view().print_grid();
-        }
         Interaction::AddItem(id, x, y, w, h) => {
             println!("Adding item to the grid");
             grid.add_item(id, x, y, w, h).unwrap();
@@ -110,6 +109,7 @@ fn handle_interaction(grid: &mut GridEngine, interaction: Interaction) {
             println!("Invalid interaction: {}", instruction);
         }
     }
+    print_grid(grid);
 }
 
 // fn interactive_mode() {
@@ -137,7 +137,7 @@ fn scripted_mode() {
         EventName::BatchChange,
         Box::new(|grid, event| match event {
             grid_engine::grid_engine::EventValue::BatchChange(events) => {
-                println!("BatchChange: {:?}", events);
+                println!("BatchChange: {:#?}", events);
                 grid.print_grid();
             }
             _ => {}
@@ -145,42 +145,29 @@ fn scripted_mode() {
     );
 
     let instructions = vec![
-        //   x y w h itemContent
         "add a 2 2 2 4 1",
-        "print",
         "add b 4 2 2 4 2",
-        "print",
         "add c 0 2 2 2",
-        "print",
-        //  id
         "rm b",
-        "print",
         "add d 4 2 2 3 0",
-        "print",
         "add e 2 2 2 4 1",
-        "print",
         "add f 2 2 2 4 1",
-        "print",
         "rm f",
-        "print",
         "add g 2 2 2 4 1",
-        "print",
         "rm a",
-        "print",
-        // id x y
         "mv c 1 0",
-        "print",
         "mv c 2 0",
-        "print",
         "mv c 2 2",
-        "print",
         "mv c 3 2",
-        "print",
+        "mv c 4 10",
+        "mv c 4 6",
+        // "mv d 1 1",
+        // "mv c 4 6", // Bug
     ];
 
     for instruction in instructions {
         handle_interaction(&mut grid, Interaction::from_str(instruction));
-        thread::sleep(time::Duration::from_millis(500))
+        thread::sleep(time::Duration::from_millis(100))
     }
 }
 
