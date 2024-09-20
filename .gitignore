@@ -6,3 +6,4 @@
 # Js / Ts
 */node_modules
 */dist
+.local

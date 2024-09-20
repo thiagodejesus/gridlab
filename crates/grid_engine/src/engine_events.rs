@@ -2,22 +2,24 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
 
+use crate::grid_view::GridView;
+
 pub trait EventNameTrait: Eq + PartialEq + Hash + Debug {}
 impl<T: Eq + PartialEq + Hash + Debug> EventNameTrait for T {}
 
 pub trait EventValueTrait: Eq + Hash {}
 impl<T: Eq + Hash> EventValueTrait for T {}
 
-type ListenerFunction<EventValue> = dyn FnMut(&EventValue) -> ();
+type Function<EventValue> = dyn FnMut(&GridView, &EventValue) -> ();
 
-struct ListenerFunctionWithId<Event: EventValueTrait> {
+struct ListenerFunction<Event: EventValueTrait> {
     id: String,
-    function: Box<ListenerFunction<Event>>,
+    function: Box<Function<Event>>,
 }
 
-impl<EventValue: EventValueTrait> Debug for ListenerFunctionWithId<EventValue> {
+impl<EventValue: EventValueTrait> Debug for ListenerFunction<EventValue> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ListenerFunctionWithId")
+        f.debug_struct("ListenerFunction")
             .field("id", &self.id)
             .finish()
     }
@@ -25,7 +27,7 @@ impl<EventValue: EventValueTrait> Debug for ListenerFunctionWithId<EventValue> {
 
 #[derive(Debug)]
 pub struct EventListener<EventName: EventNameTrait, EventValue: EventValueTrait> {
-    listeners: HashMap<EventName, Vec<ListenerFunctionWithId<EventValue>>>,
+    listeners: HashMap<EventName, Vec<ListenerFunction<EventValue>>>,
 }
 
 impl<EventName: EventNameTrait, EventValue: EventValueTrait> Default
@@ -42,10 +44,10 @@ impl<EventName: EventNameTrait, EventValue: EventValueTrait> EventListener<Event
     pub fn add_listener(
         &mut self,
         event: EventName,
-        function: Box<ListenerFunction<EventValue>>,
+        function: Box<Function<EventValue>>,
     ) -> String {
         let id = uuid::Uuid::new_v4().to_string();
-        let listener = ListenerFunctionWithId {
+        let listener = ListenerFunction {
             id: id.clone(),
             function,
         };
@@ -66,10 +68,15 @@ impl<EventName: EventNameTrait, EventValue: EventValueTrait> EventListener<Event
         }
     }
 
-    pub fn trigger_event(&mut self, event_name: EventName, event_value: EventValue) {
+    pub fn trigger_event(
+        &mut self,
+        grid: &GridView,
+        event_name: EventName,
+        event_value: EventValue,
+    ) {
         if let Some(listeners) = self.listeners.get_mut(&event_name) {
             for listener in listeners {
-                (listener.function)(&event_value);
+                (listener.function)(&grid, &event_value);
             }
         }
     }
@@ -79,6 +86,8 @@ impl<EventName: EventNameTrait, EventValue: EventValueTrait> EventListener<Event
 mod tests {
     use std::{cell::RefCell, rc::Rc};
 
+    use crate::grid_engine::GridEngine;
+
     use super::*;
 
     #[test]
@@ -87,7 +96,7 @@ mod tests {
         let event_name = "event1".to_string();
         let listener_id = event_listener.add_listener(
             event_name.clone(),
-            Box::new(|value| {
+            Box::new(|_, value| {
                 println!("Event1 triggered with value: {}", value);
             }),
         );
@@ -102,7 +111,7 @@ mod tests {
 
         let listener_2_id = event_listener.add_listener(
             event_name.clone(),
-            Box::new(|value| {
+            Box::new(|_, value| {
                 println!("Event1, listener 2, triggered with value: {}", value);
             }),
         );
@@ -117,11 +126,11 @@ mod tests {
         let event_name2 = "event2".to_string();
         event_listener.add_listener(
             event_name2.clone(),
-            Box::new(|value| {
+            Box::new(|_, value| {
                 println!("Event2 triggered with value: {}", value);
             }),
         );
-        
+
         // adding a listener to a new event don't affect other events
         assert_eq!(event_listener.listeners.len(), 2);
         let event_1_listeners_again = event_listener.listeners.get(&event_name).unwrap();
@@ -138,7 +147,7 @@ mod tests {
         let event_name = "event1".to_string();
         let listener_id = event_listener.add_listener(
             event_name.clone(),
-            Box::new(|value| {
+            Box::new(|_, value| {
                 println!("Event1 triggered with value: {}", value);
             }),
         );
@@ -153,37 +162,39 @@ mod tests {
         let mut event_listener: EventListener<String, i32> = EventListener::default();
         let add_event = "add".to_string();
 
+        let grid_view = GridEngine::new(10, 10).get_grid_view();
+        
         let value_clone = value.clone();
         event_listener.add_listener(
             add_event.clone(),
-            Box::new(move |v| {
+            Box::new(move |_, v| {
                 *value_clone.borrow_mut() += v;
             }),
         );
 
-        event_listener.trigger_event(add_event.clone(), 1);
-        
+        event_listener.trigger_event(&grid_view, add_event.clone(), 1);
+
         assert_eq!(*value.borrow(), 1);
 
         let value_clone = value.clone();
         event_listener.add_listener(
             add_event.clone(),
-            Box::new(move |v| {
+            Box::new(move |_, v| {
                 *value_clone.borrow_mut() += v;
             }),
         );
-        event_listener.trigger_event(add_event.clone(), 2);
+        event_listener.trigger_event(&grid_view, add_event.clone(), 2);
         assert_eq!(*value.borrow(), 5);
 
         let subtract_event = "subtract".to_string();
         let value_clone = value.clone();
         event_listener.add_listener(
             subtract_event.clone(),
-            Box::new(move |v| {
+            Box::new(move |_, v| {
                 *value_clone.borrow_mut() -= v;
             }),
         );
-        event_listener.trigger_event(subtract_event.clone(), 5);
+        event_listener.trigger_event(&grid_view, subtract_event.clone(), 5);
         assert_eq!(*value.borrow(), 0);
     }
 }

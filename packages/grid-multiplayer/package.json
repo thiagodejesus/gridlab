@@ -1,0 +1,22 @@
+{
+  "name": "grid-multiplayer",
+  "version": "1.0.0",
+  "main": "dist/index.js",
+  "license": "MIT",
+  "scripts": {
+    "start": "node dist/index.js",
+    "build": "tsc",
+    "dev": "npx ts-node-dev --watch src src"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.5.5",
+    "socket.io-client": "^4.7.5",
+    "typescript": "^5.5.3"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "socket.io": "^4.7.5",
+    "wasm-bindings": "../../target/pkg-node"
+  }
+}

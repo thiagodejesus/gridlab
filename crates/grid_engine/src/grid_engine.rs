@@ -1,10 +1,12 @@
-use crate::{engine_events::EventListener, error::GridError};
+use crate::{engine_events::EventListener, error::GridError, grid_view};
+use core::hash;
 use grid::Grid;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fmt::Debug};
 use tsify_next::Tsify;
 use wasm_bindgen::prelude::*;
 extern crate console_error_panic_hook;
+use crate::grid_view::GridView;
 
 // TODO, remove unnecessary clones
 // TODO, Handle all `expect` and `unwrap` properly
@@ -108,35 +110,28 @@ pub struct MoveChangeData {
 /// Change operation types
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq, Hash, Tsify)]
 #[serde(tag = "type", content = "value")]
-pub enum ChangeType {
+pub enum Change {
     Add(AddChangeData),
     Remove(RemoveChangeData),
     Move(MoveChangeData),
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq, Hash, Tsify)]
-pub struct Change {
-    pub change_type: ChangeType,
-}
-
-#[wasm_bindgen]
-impl Change {
-    fn new(change_type: ChangeType) -> Change {
-        Change { change_type }
-    }
+#[derive(Debug, Eq, PartialEq, Hash, Clone, Serialize, Deserialize, Tsify)]
+pub struct BatchChangeValue {
+    pub changes: Vec<Change>,
+    pub hash_before: String,
+    pub hash_after: String,
 }
 
 #[derive(Debug, Eq, PartialEq, Hash, Clone, Serialize, Deserialize, Tsify)]
 #[serde(tag = "type", content = "value")]
 pub enum EventValue {
-    Change(Change),
-    BatchChange(Vec<Change>),
+    BatchChange(BatchChangeValue),
 }
 
 #[wasm_bindgen]
-#[derive(PartialEq, Eq, Hash, Debug, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Hash, Debug, Serialize, Deserialize, Clone)]
 pub enum EventName {
-    Change,
     BatchChange,
 }
 
@@ -167,8 +162,9 @@ pub enum EventName {
 /// ```
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GridEngine {
-    grid: Grid<Option<String>>,
-    items: HashMap<String, Node>,
+    pub(crate) grid: Grid<Option<String>>,
+    pub(crate) items: HashMap<String, Node>,
+    #[serde(skip)]
     pending_changes: Vec<Change>,
     #[serde(skip)]
     pub events: EventListener<EventName, EventValue>,
@@ -197,14 +193,28 @@ impl GridEngine {
         }
     }
 
-    pub fn from_str(serialized: &str) -> Result<GridEngine, GridError> {
-        match serde_json::from_str(serialized) {
-            Ok(engine) => Ok(engine),
-            Err(err) => {
-                println!("Error deserializing GridEngine {:?}", err);
-                Err(GridError::new("Error deserializing GridEngine"))
-            }
+    fn from_grid_view(grid_view: GridView) -> GridEngine {
+        GridEngine {
+            grid: grid_view.grid.clone(),
+            items: grid_view.items.clone(),
+            pending_changes: Vec::new(),
+            events: EventListener::default(),
         }
+    }
+
+    pub fn from_str(serialized: &str) -> Result<GridEngine, GridError> {
+        let grid_view: GridView = match serde_json::from_str(serialized) {
+            Ok(grid_view) => grid_view,
+            Err(err) => {
+                println!("Error deserializing GridView {:?}", err);
+                return Err(GridError::new(
+                    "Error deserializing GridView",
+                    Some(Box::new(err)),
+                ));
+            }
+        };
+
+        return Ok(GridEngine::from_grid_view(grid_view));
     }
 
     /// Creates a new `Node` and adds it to the grid.
@@ -225,10 +235,9 @@ impl GridEngine {
     }
 
     fn create_add_change(&mut self, node: &Node) {
-        self.pending_changes
-            .push(Change::new(ChangeType::Add(AddChangeData {
-                value: node.clone(),
-            })));
+        self.pending_changes.push(Change::Add(AddChangeData {
+            value: node.clone(),
+        }));
     }
 
     /// Adds an item to the grid at the specified position.
@@ -252,7 +261,7 @@ impl GridEngine {
         h: usize,
     ) -> Result<String, GridError> {
         if self.items.get(&id).is_some() {
-            return Err(GridError::new("Id already exists"));
+            return Err(GridError::new("Id already exists", None));
         };
 
         let node = self.new_node(id, x, y, w, h);
@@ -268,10 +277,9 @@ impl GridEngine {
     }
 
     fn create_remove_change(&mut self, node: &Node) {
-        self.pending_changes
-            .push(Change::new(ChangeType::Remove(RemoveChangeData {
-                value: node.clone(),
-            })));
+        self.pending_changes.push(Change::Remove(RemoveChangeData {
+            value: node.clone(),
+        }));
     }
 
     /// Removes an item from the grid.
@@ -282,7 +290,7 @@ impl GridEngine {
     pub fn remove_item(&mut self, id: &str) -> Result<(), GridError> {
         let node = match self.items.get(id) {
             Some(node) => node,
-            None => Err(GridError::new("Item not found"))?,
+            None => Err(GridError::new("Item not found", None))?,
         }
         .clone();
 
@@ -318,11 +326,10 @@ impl GridEngine {
 
         self.handle_collision(node, new_x, new_y);
 
-        self.pending_changes
-            .push(Change::new(ChangeType::Move(MoveChangeData {
-                old_value: old_node,
-                new_value: Node::new(node.id.to_string(), new_x, new_y, node.w, node.h),
-            })));
+        self.pending_changes.push(Change::Move(MoveChangeData {
+            old_value: old_node,
+            new_value: Node::new(node.id.to_string(), new_x, new_y, node.w, node.h),
+        }));
     }
 
     /// Moves an item to a new position in the grid.
@@ -335,7 +342,7 @@ impl GridEngine {
     pub fn move_item(&mut self, id: &str, new_x: usize, new_y: usize) -> Result<(), GridError> {
         let node = match self.items.get(id) {
             Some(node) => node,
-            None => Err(GridError::new("Item not found"))?,
+            None => Err(GridError::new("Item not found", None))?,
         };
 
         self.create_move_change(&node.clone(), new_x, new_y);
@@ -346,23 +353,10 @@ impl GridEngine {
     }
 
     fn apply_changes(&mut self) {
-        // Needs to think if the events should be triggered before or after the changes
-        self.events.trigger_event(
-            EventName::BatchChange,
-            EventValue::BatchChange(
-                self.pending_changes
-                    .iter()
-                    .map(|change| change.clone())
-                    .collect(),
-            ),
-        );
-
+        let hash_before = self.get_grid_view().hash();
         for change in self.pending_changes.iter() {
-            self.events
-                .trigger_event(EventName::Change, EventValue::Change(change.clone()));
-
-            match &change.change_type {
-                ChangeType::Add(data) => {
+            match &change {
+                Change::Add(data) => {
                     let node = &data.value;
 
                     node.for_cell(&mut |x, y| {
@@ -373,14 +367,14 @@ impl GridEngine {
                                 *cell = Some(node.id.to_string());
                                 Ok(())
                             }
-                            None => Err(GridError::new("Error adding item to grid")),
+                            None => Err(GridError::new("Error adding item to grid", None)),
                         }
                     })
                     .expect("UnhandledError");
 
                     self.items.insert(node.id.to_string(), node.clone());
                 }
-                ChangeType::Remove(data) => {
+                Change::Remove(data) => {
                     let node = &data.value;
 
                     node.for_cell(&mut |x, y| {
@@ -391,14 +385,14 @@ impl GridEngine {
                                 *cell = None;
                                 Ok(())
                             }
-                            None => Err(GridError::new("Error removing item from grid")),
+                            None => Err(GridError::new("Error removing item from grid", None)),
                         }
                     })
                     .expect("UnhandledError");
 
                     self.items.remove(&node.id);
                 }
-                ChangeType::Move(data) => {
+                Change::Move(data) => {
                     let node = &data.new_value;
                     let old_node = &data.old_value;
 
@@ -411,7 +405,7 @@ impl GridEngine {
                                     *cell = None;
                                     Ok(())
                                 }
-                                None => Err(GridError::new("Error moving item from grid")),
+                                None => Err(GridError::new("Error moving item from grid", None)),
                             }
                         })
                         .expect("UnhandledError");
@@ -425,15 +419,121 @@ impl GridEngine {
                                 *cell = Some(node.id.to_string());
                                 Ok(())
                             }
-                            None => Err(GridError::new("Error moving item to grid")),
+                            None => Err(GridError::new("Error moving item to grid", None)),
                         }
                     })
                     .expect("UnhandledError");
                 }
             }
         }
+        let grid_view = GridView::new(self);
+
+        self.events.trigger_event(
+            &grid_view,
+            EventName::BatchChange,
+            EventValue::BatchChange(BatchChangeValue {
+                changes: self
+                    .pending_changes
+                    .iter()
+                    .map(|change| change.clone())
+                    .collect(),
+                hash_before,
+                hash_after: grid_view.hash(),
+            }),
+        );
+
         // Needs to think if could exists a problem of possibly not processed changes being also removed.
         self.pending_changes.clear();
+    }
+
+    pub fn apply_external_changes(&mut self, changes: Vec<Change>) {
+        // Should validate that all changes can be applied, otherwise, will discard all of them
+
+        let hash_before = self.get_grid_view().hash();
+
+        for change in changes.iter() {
+            match &change {
+                Change::Add(data) => {
+                    let node = &data.value;
+
+                    node.for_cell(&mut |x, y| {
+                        let element_at_position = self.grid.get_mut(y, x);
+
+                        match element_at_position {
+                            Some(cell) => {
+                                *cell = Some(node.id.to_string());
+                                Ok(())
+                            }
+                            None => Err(GridError::new("Error adding item to grid", None)),
+                        }
+                    })
+                    .expect("UnhandledError");
+
+                    self.items.insert(node.id.to_string(), node.clone());
+                }
+                Change::Remove(data) => {
+                    let node = &data.value;
+
+                    node.for_cell(&mut |x, y| {
+                        let element_at_position = self.grid.get_mut(y, x);
+
+                        match element_at_position {
+                            Some(cell) => {
+                                *cell = None;
+                                Ok(())
+                            }
+                            None => Err(GridError::new("Error removing item from grid", None)),
+                        }
+                    })
+                    .expect("UnhandledError");
+
+                    self.items.remove(&node.id);
+                }
+                Change::Move(data) => {
+                    let node = &data.new_value;
+                    let old_node = &data.old_value;
+
+                    old_node
+                        .for_cell(&mut |x, y| {
+                            let element_at_position = self.grid.get_mut(y, x);
+
+                            match element_at_position {
+                                Some(cell) => {
+                                    *cell = None;
+                                    Ok(())
+                                }
+                                None => Err(GridError::new("Error moving item from grid", None)),
+                            }
+                        })
+                        .expect("UnhandledError");
+
+                    self.items.insert(node.id.to_string(), node.clone());
+                    node.for_cell(&mut |x, y| {
+                        let element_at_position = self.grid.get_mut(y, x);
+
+                        match element_at_position {
+                            Some(cell) => {
+                                *cell = Some(node.id.to_string());
+                                Ok(())
+                            }
+                            None => Err(GridError::new("Error moving item to grid", None)),
+                        }
+                    })
+                    .expect("UnhandledError");
+                }
+            }
+        }
+        let grid_view = GridView::new(self);
+
+        self.events.trigger_event(
+            &grid_view,
+            EventName::BatchChange,
+            EventValue::BatchChange(BatchChangeValue {
+                changes: changes.iter().map(|change| change.clone()).collect(),
+                hash_before,
+                hash_after: grid_view.hash(),
+            }),
+        );
     }
 
     /// Checks if a node will collide with any other nodes at the specified position.
@@ -465,39 +565,8 @@ impl GridEngine {
         collides_with
     }
 
-    /// Get the nodes sorted by id
-    pub fn get_nodes(&self) -> Vec<Node> {
-        let mut cloned: Vec<Node> = self.items.values().cloned().collect();
-        // Would be better to sort by some created_at
-        cloned.sort_by_key(|n| n.id.clone());
-        cloned
-    }
-
-    /// Prints answer of get_grid_formatted
-    pub fn print_grid(&self) {
-        println!("{}", self.get_grid_formatted());
-    }
-
-    /// Format grid nodes to string
-    pub fn get_grid_formatted(&self) -> String {
-        let mut grid_str = String::new();
-        self.grid.iter_rows().for_each(|row| {
-            row.for_each(|cell| match cell {
-                Some(item) => {
-                    grid_str.push_str(&format!("[{}]", item));
-                }
-                None => {
-                    grid_str.push_str("[ ]");
-                }
-            });
-            grid_str.push_str("\n");
-        });
-
-        grid_str
-    }
-
-    pub fn serialized_as_str(&self) -> String {
-        serde_json::to_string(self).expect("Failed to serialize GridEngine")
+    pub fn get_grid_view(&self) -> GridView {
+        GridView::new(self)
     }
 }
 
@@ -671,7 +740,7 @@ mod tests {
         let item_0_id = engine.add_item("0".to_string(), 0, 0, 2, 2).unwrap();
         let item_1_id = engine.add_item("1".to_string(), 0, 2, 2, 2).unwrap();
 
-        let nodes = engine.get_nodes();
+        let nodes = engine.get_grid_view().get_nodes();
         assert_eq!(nodes.len(), 2);
         assert_eq!(nodes[0].id, item_0_id);
         assert_eq!(nodes[1].id, item_1_id);
@@ -683,13 +752,16 @@ mod tests {
         engine.add_item("0".to_string(), 0, 0, 2, 2).unwrap();
         engine.add_item("1".to_string(), 0, 2, 2, 2).unwrap();
 
-        let serialized = engine.serialized_as_str();
+        let serialized = engine.get_grid_view().serialized_as_str();
         let deserialized_engine = GridEngine::from_str(&serialized).unwrap();
 
-        assert_eq!(engine.get_nodes(), deserialized_engine.get_nodes());
         assert_eq!(
-            engine.get_grid_formatted(),
-            deserialized_engine.get_grid_formatted()
+            engine.get_grid_view().get_nodes(),
+            deserialized_engine.get_grid_view().get_nodes()
+        );
+        assert_eq!(
+            engine.get_grid_view().get_grid_formatted(),
+            deserialized_engine.get_grid_view().get_grid_formatted()
         );
     }
 }

@@ -1,6 +1,6 @@
 use std::{thread, time};
 
-use grid_engine::engine::{EventName, GridEngine};
+use grid_engine::grid_engine::{EventName, GridEngine};
 
 enum Interaction {
     PrintGrid,
@@ -92,7 +92,7 @@ fn handle_interaction(grid: &mut GridEngine, interaction: Interaction) {
         Interaction::PrintGrid => {
             print!("\x1B[2J\x1B[1;1H");
             println!("Printing the grid");
-            grid.print_grid();
+            grid.get_grid_view().print_grid();
         }
         Interaction::AddItem(id, x, y, w, h) => {
             println!("Adding item to the grid");
@@ -134,20 +134,11 @@ fn scripted_mode() {
     let mut grid = GridEngine::new(16, 12);
 
     grid.events.add_listener(
-        EventName::Change,
-        Box::new(|event| match event {
-            grid_engine::engine::EventValue::Change(change) => {
-                println!("Change: {:?}", change);
-            }
-            _ => {}
-        }),
-    );
-
-    grid.events.add_listener(
         EventName::BatchChange,
-        Box::new(|event| match event {
-            grid_engine::engine::EventValue::BatchChange(events) => {
+        Box::new(|grid, event| match event {
+            grid_engine::grid_engine::EventValue::BatchChange(events) => {
                 println!("BatchChange: {:?}", events);
+                grid.print_grid();
             }
             _ => {}
         }),
@@ -189,7 +180,7 @@ fn scripted_mode() {
 
     for instruction in instructions {
         handle_interaction(&mut grid, Interaction::from_str(instruction));
-        thread::sleep(time::Duration::from_millis(200))
+        thread::sleep(time::Duration::from_millis(500))
     }
 }
 

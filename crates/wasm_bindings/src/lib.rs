@@ -1,11 +1,58 @@
-pub use grid_engine::engine::*;
+pub use grid_engine::grid_engine::*;
+pub use grid_engine::grid_view::*;
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
 /// Some types for the TS bindings.
 extern "C" {
-    #[wasm_bindgen(extends = js_sys::Function, typescript_type = "(value: EventValue) => void")]
+    #[wasm_bindgen(extends = js_sys::Function, typescript_type = "(gridEngine: GridViewWasm, value: EventValue) => void")]
     pub type EventListenerCallback;
+
+    #[wasm_bindgen(typescript_type = "Change[]")]
+    #[derive(Debug)]
+    pub type Changes;
+
+    #[wasm_bindgen(js_namespace = console)]
+    fn log(s: &str);
+}
+
+#[wasm_bindgen]
+pub struct GridViewWasm {
+    grid_view: GridView,
+}
+
+#[wasm_bindgen]
+impl GridViewWasm {
+    pub(crate) fn from_grid_view(grid_view: &GridView) -> GridViewWasm {
+        GridViewWasm {
+            grid_view: grid_view.clone(),
+        }
+    }
+
+    #[wasm_bindgen(js_name = getNodes)]
+    pub fn get_nodes(&self) -> Vec<Node> {
+        self.grid_view.get_nodes()
+    }
+
+    #[wasm_bindgen(js_name = printGrid)]
+    pub fn print_grid(&self) {
+        self.grid_view.print_grid();
+    }
+
+    #[wasm_bindgen(js_name = getGridFormatted)]
+    pub fn get_grid_formatted(&self) -> String {
+        self.grid_view.get_grid_formatted()
+    }
+
+    #[wasm_bindgen(js_name = serializedAsStr)]
+    pub fn serialized_as_str(&self) -> String {
+        self.grid_view.serialized_as_str()
+    }
+
+    #[wasm_bindgen(js_name = hash)]
+    pub fn hash(&self) -> String {
+        self.grid_view.hash()
+    }
 }
 
 #[wasm_bindgen]
@@ -53,20 +100,41 @@ impl GridEngineWasm {
         }
     }
 
-    #[wasm_bindgen(js_name = getNodes)]
-    pub fn get_nodes(&self) -> Vec<Node> {
-        self.grid_engine.get_nodes()
+    #[wasm_bindgen(js_name = getGridView)]
+    pub fn get_grid_view(&self) -> GridViewWasm {
+        GridViewWasm::from_grid_view(&self.grid_engine.get_grid_view())
     }
 
-    #[wasm_bindgen(js_name = serializedAsStr)]
+    #[wasm_bindgen(js_name = getNodes)] // Should remove this as this can be done via getGridView
+    pub fn get_nodes(&self) -> Vec<Node> {
+        self.grid_engine.get_grid_view().get_nodes()
+    }
+
+    #[wasm_bindgen(js_name = getGridFormatted)] // Should remove this as this can be done via getGridView
+    pub fn get_grid_formatted(&self) -> String {
+        self.grid_engine.get_grid_view().get_grid_formatted()
+    }
+
+    #[wasm_bindgen(js_name = applyExternalChanges)]
+    pub fn apply_external_changes(&mut self, changes: Changes) -> Result<(), JsError> {
+        log(&format!("Args received, {:?}", changes));
+        let changes: Vec<Change> = serde_wasm_bindgen::from_value(changes.obj)?;
+        log(&format!("Changes parsed, {:?}", changes));
+        self.grid_engine.apply_external_changes(changes);
+        Ok(())
+    }
+
+    #[wasm_bindgen(js_name = serializedAsStr)] // Should remove this as this can be done via getGridView
     pub fn serialized_as_str(&self) -> String {
-        self.grid_engine.serialized_as_str()
+        self.grid_engine.get_grid_view().serialized_as_str()
     }
 
     #[wasm_bindgen(js_name = fromSerializedStr)]
     pub fn from_serialized_str(serialized_str: &str) -> Result<GridEngineWasm, JsError> {
         match GridEngine::from_str(serialized_str) {
-            Ok(grid_engine) => Ok(GridEngineWasm { grid_engine }),
+            Ok(grid_engine) => Ok(GridEngineWasm {
+                grid_engine: grid_engine,
+            }),
             Err(e) => Err(JsError::new(&e.get_message())),
         }
     }
@@ -78,12 +146,22 @@ impl GridEngineWasm {
         listener_callback: EventListenerCallback,
     ) {
         self.grid_engine.events.add_listener(
-            event_name,
-            Box::new(move |event_value| {
+            event_name.clone(),
+            Box::new(move |grid, event_value| {
                 let this = JsValue::null();
+
+                log(&format!(
+                    "Event received, {:?}, {:?}",
+                    event_name, event_value
+                ));
+
+                // let formatted = self.get_grid_formatted();
+                let grid_view = JsValue::from(GridViewWasm::from_grid_view(grid));
+
                 listener_callback
-                    .call1(
+                    .call2(
                         &this,
+                        &grid_view,
                         &serde_wasm_bindgen::to_value(event_value)
                             .expect("Failed to parse event_value"),
                     )
