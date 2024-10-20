@@ -120,9 +120,9 @@ impl GridEngineWasm {
 
     #[wasm_bindgen(js_name = applyChanges)]
     pub fn apply_changes(&mut self, changes: Changes) -> Result<(), JsError> {
-        log(&format!("Args received, {:?}", changes));
+        // log(&format!("Args received, {:#?}", changes));
         let changes: Vec<Change> = serde_wasm_bindgen::from_value(changes.obj)?;
-        log(&format!("Changes parsed, {:?}", changes));
+        // log(&format!("Changes parsed, {:#?}", changes));
         self.grid_engine.apply_changes(&changes);
         Ok(())
     }
@@ -134,6 +134,8 @@ impl GridEngineWasm {
 
     #[wasm_bindgen(js_name = fromSerializedStr)]
     pub fn from_serialized_str(serialized_str: &str) -> Result<GridEngineWasm, JsError> {
+        console_error_panic_hook::set_once();
+        
         match GridEngine::from_str(serialized_str) {
             Ok(grid_engine) => Ok(GridEngineWasm {
                 grid_engine: grid_engine,
@@ -148,28 +150,28 @@ impl GridEngineWasm {
         event_name: EventName,
         listener_callback: EventListenerCallback,
     ) {
-        self.grid_engine.events.add_listener(
-            event_name.clone(),
-            Box::new(move |grid, event_value| {
-                let this = JsValue::null();
+        // self.grid_engine.events.add_listener(
+        //     event_name.clone(),
+        //     Box::new(move |grid, event_value| {
+        //         let this = JsValue::null();
 
-                log(&format!(
-                    "Event received, {:?}, {:?}",
-                    event_name, event_value
-                ));
+        //         // log(&format!(
+        //         //     "Event received, {:?}, {:?}",
+        //         //     event_name, event_value
+        //         // ));
 
-                // let formatted = self.get_grid_formatted();
-                let grid_view = JsValue::from(GridViewWasm::from_grid_view(grid));
+        //         // let formatted = self.get_grid_formatted();
+        //         let grid_view = JsValue::from(GridViewWasm::from_grid_view(grid));
 
-                listener_callback
-                    .call2(
-                        &this,
-                        &grid_view,
-                        &serde_wasm_bindgen::to_value(event_value)
-                            .expect("Failed to parse event_value"),
-                    )
-                    .expect("Failed to call listener_callback");
-            }),
-        );
+        //         listener_callback
+        //             .call2(
+        //                 &this,
+        //                 &grid_view,
+        //                 &serde_wasm_bindgen::to_value(event_value)
+        //                     .expect("Failed to parse event_value"),
+        //             )
+        //             .expect("Failed to call listener_callback");
+        //     }),
+        // );
     }
 }

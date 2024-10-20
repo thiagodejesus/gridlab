@@ -85,8 +85,9 @@ export class GridMultiplayerServer {
       socket.on("changes", (changes: EventValue['value']) => {
         console.log("Socket Received Change", changes);
         const actualHash = grid.getGridView().hash();
-        if (changes.hash_before === actualHash) {
-          grid.applyExternalChanges(changes.changes);
+        if (changes.hash_before === actualHash && changes.hash_after !== actualHash) {
+          console.log("Applying changes")
+          grid.applyChanges(changes.changes);
         } else if (changes.hash_after === actualHash) {
           // Duplicated
           console.log("Received already applied change");

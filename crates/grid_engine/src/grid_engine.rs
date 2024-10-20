@@ -2,7 +2,8 @@ use crate::grid_view::GridView;
 use crate::{engine_events::EventListener, error::GridError};
 use grid::Grid;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, fmt::Debug};
+use std::fmt::Display;
+use std::{collections::BTreeMap, fmt::Debug};
 use tsify_next::Tsify;
 use wasm_bindgen::prelude::*;
 
@@ -25,6 +26,7 @@ fn for_cell(
     Ok(())
 }
 
+#[derive(Debug)]
 enum UpdateGridOperation {
     Add,
     Remove,
@@ -53,7 +55,11 @@ fn update_grid(
             }
             Ok(())
         }
-        None => Err(GridError::new("Error updating grid", None)),
+        None => Err(GridError::new(
+            &format!("Error updating grid with {:?} operation", operation),
+            &format!("No element at position X:{x},Y:{y} in grid: {:?}", grid),
+            None,
+        )),
     }
 }
 
@@ -131,6 +137,15 @@ pub enum EventValue {
     BatchChange(BatchChangeValue),
 }
 
+// Just for test, should correctly implement display
+impl Display for EventValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            EventValue::BatchChange(value) => write!(f, "BatchChange: {:?}", value),
+        }
+    }
+}
+
 #[wasm_bindgen]
 #[derive(PartialEq, Eq, Hash, Debug, Serialize, Deserialize, Clone)]
 pub enum EventName {
@@ -140,7 +155,7 @@ pub enum EventName {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GridEngine {
     pub(crate) grid: Grid<Option<String>>,
-    pub(crate) items: HashMap<String, Node>,
+    pub(crate) items: BTreeMap<String, Node>,
     #[serde(skip)]
     pending_changes: Vec<Change>,
     #[serde(skip)]
@@ -151,7 +166,7 @@ impl GridEngine {
     pub fn new(rows: usize, cols: usize) -> GridEngine {
         GridEngine {
             grid: Grid::new(rows, cols),
-            items: HashMap::new(),
+            items: BTreeMap::new(),
             pending_changes: Vec::new(),
             events: EventListener::default(),
         }
@@ -173,6 +188,7 @@ impl GridEngine {
                 println!("Error deserializing GridView {:?}", err);
                 return Err(GridError::new(
                     "Error deserializing GridView",
+                    "",
                     Some(Box::new(err)),
                 ));
             }
@@ -201,7 +217,7 @@ impl GridEngine {
         h: usize,
     ) -> Result<String, GridError> {
         if self.items.get(&id).is_some() {
-            return Err(GridError::new("Id already exists", None));
+            return Err(GridError::new("Id already exists", "", None));
         };
 
         let node = self.new_node(id, x, y, w, h);
@@ -226,7 +242,7 @@ impl GridEngine {
     pub fn remove_item(&mut self, id: &str) -> Result<(), GridError> {
         let node = match self.items.get(id) {
             Some(node) => node,
-            None => Err(GridError::new("Item not found", None))?,
+            None => Err(GridError::new("Item not found", "", None))?,
         }
         .clone();
 
@@ -302,7 +318,7 @@ impl GridEngine {
     pub fn move_item(&mut self, id: &str, new_x: usize, new_y: usize) -> Result<(), GridError> {
         let node = match self.items.get(id) {
             Some(node) => node,
-            None => Err(GridError::new("Item not found", None))?,
+            None => Err(GridError::new("Item not found", "", None))?,
         };
 
         self.create_move_change(&node.clone(), new_x, new_y, &self.grid.clone());

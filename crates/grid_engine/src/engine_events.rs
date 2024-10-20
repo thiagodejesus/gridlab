@@ -10,7 +10,7 @@ impl<T: Eq + PartialEq + Hash + Debug> EventNameTrait for T {}
 pub trait EventValueTrait: Eq + Hash {}
 impl<T: Eq + Hash> EventValueTrait for T {}
 
-type Function<EventValue> = dyn FnMut(&GridView, &EventValue) -> ();
+type Function<EventValue> = dyn FnMut(&GridView, &EventValue) -> () + Send + 'static + Sync;
 
 struct ListenerFunction<Event: EventValueTrait> {
     id: String,
@@ -84,7 +84,7 @@ impl<EventName: EventNameTrait, EventValue: EventValueTrait> EventListener<Event
 
 #[cfg(test)]
 mod tests {
-    use std::{cell::RefCell, rc::Rc};
+    use std::{sync::Arc, sync::Mutex};
 
     use crate::grid_engine::GridEngine;
 
@@ -158,43 +158,44 @@ mod tests {
 
     #[test]
     fn test_trigger_event() {
-        let value = Rc::new(RefCell::new(0));
+        let value = Arc::new(Mutex::new(0));
         let mut event_listener: EventListener<String, i32> = EventListener::default();
         let add_event = "add".to_string();
 
         let grid_view = GridEngine::new(10, 10).get_grid_view();
-        
+
         let value_clone = value.clone();
         event_listener.add_listener(
             add_event.clone(),
             Box::new(move |_, v| {
-                *value_clone.borrow_mut() += v;
+                *value_clone.lock().unwrap() += v;
+                // *value_clone.borrow_mut() += v;
             }),
         );
 
         event_listener.trigger_event(&grid_view, add_event.clone(), 1);
 
-        assert_eq!(*value.borrow(), 1);
+        assert_eq!(*value.lock().unwrap(), 1);
 
         let value_clone = value.clone();
         event_listener.add_listener(
             add_event.clone(),
             Box::new(move |_, v| {
-                *value_clone.borrow_mut() += v;
+                *value_clone.lock().unwrap() += v;
             }),
         );
         event_listener.trigger_event(&grid_view, add_event.clone(), 2);
-        assert_eq!(*value.borrow(), 5);
+        assert_eq!(*value.lock().unwrap(), 5);
 
         let subtract_event = "subtract".to_string();
         let value_clone = value.clone();
         event_listener.add_listener(
             subtract_event.clone(),
             Box::new(move |_, v| {
-                *value_clone.borrow_mut() -= v;
+                *value_clone.lock().unwrap() -= v;
             }),
         );
         event_listener.trigger_event(&grid_view, subtract_event.clone(), 5);
-        assert_eq!(*value.borrow(), 0);
+        assert_eq!(*value.lock().unwrap(), 0);
     }
 }

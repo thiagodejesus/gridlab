@@ -17,6 +17,6 @@
   "dependencies": {
     "express": "^4.19.2",
     "socket.io": "^4.7.5",
-    "wasm-bindings": "../../target/pkg-node"
+    "wasm-bindings": "../../target/pkg-node/"
   }
 }

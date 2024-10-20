@@ -6,6 +6,7 @@ import {
   EventValue,
 } from "wasm-bindings";
 import { io, Socket } from "socket.io-client";
+import { Logger } from "./utils/logger";
 
 type InitializeGridMultiplayerClientOpts = {
   url: string;
@@ -13,23 +14,27 @@ type InitializeGridMultiplayerClientOpts = {
     width: number;
     height: number;
   };
+  logger: Logger;
 };
 
 type GridMultiplayerClientOpts = {
   url: string;
   grid: GridEngineWasm;
   socket: Socket;
+  logger: Logger;
 };
 
 export class GridMultiplayerClient {
   private url: string;
   grid: GridEngineWasm;
   private socket: Socket;
+  private logger: Logger = new Logger("GridMultiplayerClient");
 
   constructor(opts: GridMultiplayerClientOpts) {
     this.url = opts.url;
     this.grid = opts.grid;
     this.socket = opts.socket;
+    this.logger = opts.logger;
   }
 
   static async initialize(
@@ -46,40 +51,50 @@ export class GridMultiplayerClient {
         reject("timeout");
       }, 5000);
 
-      // socket.on("connect", () => {
-      //   console.log("connected");
-      //   socket.emit("message", "Hello World");
-      // });
-
-      // socket.on("message", (data: any) => {
-      //   console.log("message received");
-      //   console.log(data);
-      // });
-
       let grid: GridEngineWasm;
 
       socket.on("grid", (data: string) => {
-        console.log("grid received");
-        console.log(data);
+        opts.logger.info("grid received");
         grid = GridEngineWasm.fromSerializedStr(data);
         clearTimeout(timeout);
         grid.addEventListener(EventName.BatchChange, (_, event) => {
-          // console.log("Grid change emitted socket change", event.value);
+          opts.logger.debug("Sending Changes");
           socket.emit("changes", event.value, socket.id);
         });
-        resolve(new GridMultiplayerClient({ grid, url: opts.url, socket }));
+        resolve(
+          new GridMultiplayerClient({
+            grid,
+            url: opts.url,
+            socket,
+            logger: opts.logger,
+          })
+        );
       });
 
-      socket.on("changes", (changes: EventValue['value']) => {
-        console.log("Socket Received Change", changes);
+      socket.on("changes", (changes: EventValue["value"]) => {
         const actualHash = grid.getGridView().hash();
-        if (changes.hash_before === actualHash) {
-          grid.applyExternalChanges(changes.changes);
+        opts.logger.info("Changes received");
+        opts.logger.info(
+          JSON.stringify({
+            hashBefore: changes.hash_before,
+            hashAfter: changes.hash_after,
+            actualHash,
+            changes: changes.changes,
+          })
+        );
+        console.log(grid.getGridView().getGridFormatted());
+        if (
+          changes.hash_before === actualHash &&
+          changes.hash_after !== actualHash
+        ) {
+          opts.logger.info("Applying change");
+          grid.applyChanges(changes.changes);
         } else if (changes.hash_after === actualHash) {
           // Duplicated
-          console.log("Received already applied change");
+          opts.logger.warn("Already applied change");
         } else {
           // Force resync
+          opts.logger.error("Should Resync");
         }
       });
     });

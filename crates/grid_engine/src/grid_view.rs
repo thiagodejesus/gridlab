@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -11,7 +11,7 @@ use crate::grid_engine::{GridEngine, Node};
 #[derive(Serialize, Deserialize, Clone)]
 pub struct GridView {
     pub(crate) grid: Grid<Option<String>>,
-    pub(crate) items: HashMap<String, Node>,
+    pub(crate) items: BTreeMap<String, Node>,
 }
 
 impl GridView {
