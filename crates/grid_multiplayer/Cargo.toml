@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-axum = { version = "0.7.7", features = ["macros"] }
-fastwebsockets = { version = "0.8.0", features = ["upgrade", "with_axum"] }
+futures-util = "0.3.31"
 grid-engine = { path = "../grid_engine" }
-tokio = { version = "1.40.0", features = ["rt", "rt-multi-thread", "macros"] }
+tokio = { version = "1.40.0", features = ["rt", "rt-multi-thread", "macros", "sync", "io-std"] }
+tokio-tungstenite = "0.24.0"

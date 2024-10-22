@@ -1,4 +1,4 @@
-use grid_multiplayer::GridMultiplayerServerBuilder;
+use grid_multiplayer::server::GridMultiplayerServerBuilder;
 
 #[tokio::main]
 pub async fn main() {
