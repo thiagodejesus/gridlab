@@ -32,11 +32,11 @@ impl GridView {
 
     /// Prints answer of get_grid_formatted
     pub fn print_grid(&self) {
-        println!("{}", self.get_grid_formatted());
+        println!("{}", self.get_grid_formatted(1));
     }
 
     /// Format grid nodes to string
-    pub fn get_grid_formatted(&self) -> String {
+    pub fn get_grid_formatted(&self, cell_space: u8) -> String {
         let mut grid_str = String::new();
         grid_str.push_str("  ");
         for i in 0..self.grid.cols() {
@@ -57,7 +57,7 @@ impl GridView {
                             grid_str.push_str(&format!("[{}]", item));
                         }
                         None => {
-                            grid_str.push_str("[ ]");
+                            grid_str.push_str(&format!("[{}]", " ".repeat(cell_space as usize)));
                         }
                     };
                 });

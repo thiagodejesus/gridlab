@@ -6,5 +6,13 @@ edition = "2021"
 [dependencies]
 futures-util = "0.3.31"
 grid-engine = { path = "../grid_engine" }
-tokio = { version = "1.40.0", features = ["rt", "rt-multi-thread", "macros", "sync", "io-std"] }
+http = "1.1.0"
+tokio = { version = "1.40.0", features = [
+    "rt",
+    "rt-multi-thread",
+    "macros",
+    "sync",
+    "io-std",
+    "time",
+] }
 tokio-tungstenite = "0.24.0"

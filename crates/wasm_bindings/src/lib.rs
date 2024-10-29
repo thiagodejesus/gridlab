@@ -42,7 +42,7 @@ impl GridViewWasm {
 
     #[wasm_bindgen(js_name = getGridFormatted)]
     pub fn get_grid_formatted(&self) -> String {
-        self.grid_view.get_grid_formatted()
+        self.grid_view.get_grid_formatted(2)
     }
 
     #[wasm_bindgen(js_name = serializedAsStr)]
@@ -115,7 +115,7 @@ impl GridEngineWasm {
 
     #[wasm_bindgen(js_name = getGridFormatted)] // Should remove this as this can be done via getGridView
     pub fn get_grid_formatted(&self) -> String {
-        self.grid_engine.get_grid_view().get_grid_formatted()
+        self.grid_engine.get_grid_view().get_grid_formatted(2)
     }
 
     #[wasm_bindgen(js_name = applyChanges)]
@@ -136,7 +136,8 @@ impl GridEngineWasm {
     pub fn from_serialized_str(serialized_str: &str) -> Result<GridEngineWasm, JsError> {
         console_error_panic_hook::set_once();
         
-        match GridEngine::from_str(serialized_str) {
+        let as_bytes_str = serialized_str.as_bytes().to_vec();
+        match GridEngine::try_from(&as_bytes_str) {
             Ok(grid_engine) => Ok(GridEngineWasm {
                 grid_engine: grid_engine,
             }),
@@ -160,7 +161,7 @@ impl GridEngineWasm {
         //         //     event_name, event_value
         //         // ));
 
-        //         // let formatted = self.get_grid_formatted();
+        //         // let formatted = self.get_grid_formatted(2);
         //         let grid_view = JsValue::from(GridViewWasm::from_grid_view(grid));
 
         //         listener_callback

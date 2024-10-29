@@ -146,6 +146,50 @@ impl Display for EventValue {
     }
 }
 
+impl TryFrom<Vec<u8>> for EventValue {
+    type Error = GridError;
+
+    fn try_from(value: Vec<u8>) -> Result<Self, Self::Error> {
+        let serialized = match String::from_utf8(value) {
+            Ok(serialized) => serialized,
+            Err(err) => {
+                return Err(GridError::new(
+                    "Error converting bytes to string",
+                    "",
+                    Some(Box::new(err)),
+                ))
+            }
+        };
+
+        let event_value: EventValue = match serde_json::from_str(&serialized) {
+            Ok(event_value) => event_value,
+            Err(err) => {
+                return Err(GridError::new(
+                    "Error deserializing EventValue",
+                    "",
+                    Some(Box::new(err)),
+                ))
+            }
+        };
+
+        Ok(event_value)
+    }
+}
+
+impl Into<Vec<u8>> for EventValue {
+    fn into(self) -> Vec<u8> {
+        let serialized = serde_json::to_string(&self).expect("Failed to serialize EventValue");
+        serialized.into_bytes()
+    }
+}
+
+impl Into<Vec<u8>> for &EventValue {
+    fn into(self) -> Vec<u8> {
+        let serialized = serde_json::to_string(&self).expect("Failed to serialize EventValue");
+        serialized.into_bytes()
+    }
+}
+
 #[wasm_bindgen]
 #[derive(PartialEq, Eq, Hash, Debug, Serialize, Deserialize, Clone)]
 pub enum EventName {
@@ -172,16 +216,7 @@ impl GridEngine {
         }
     }
 
-    fn from_grid_view(grid_view: GridView) -> GridEngine {
-        GridEngine {
-            grid: grid_view.grid.clone(),
-            items: grid_view.items.clone(),
-            pending_changes: Vec::new(),
-            events: EventListener::default(),
-        }
-    }
-
-    pub fn from_str(serialized: &str) -> Result<GridEngine, GridError> {
+    fn from_str(serialized: &str) -> Result<GridEngine, GridError> {
         let grid_view: GridView = match serde_json::from_str(serialized) {
             Ok(grid_view) => grid_view,
             Err(err) => {
@@ -194,7 +229,7 @@ impl GridEngine {
             }
         };
 
-        return Ok(GridEngine::from_grid_view(grid_view));
+        return Ok(GridEngine::from(&grid_view));
     }
 
     fn new_node(&mut self, id: String, x: usize, y: usize, w: usize, h: usize) -> Node {
@@ -398,6 +433,48 @@ impl GridEngine {
 
     pub fn get_grid_view(&self) -> GridView {
         GridView::new(self)
+    }
+}
+
+impl TryFrom<&Vec<u8>> for GridEngine {
+    type Error = GridError;
+
+    fn try_from(bytes: &Vec<u8>) -> Result<Self, Self::Error> {
+        let serialized = match String::from_utf8(bytes.clone()) {
+            Ok(serialized) => serialized,
+            Err(err) => {
+                return Err(GridError::new(
+                    "Error converting bytes to string",
+                    "",
+                    Some(Box::new(err)),
+                ))
+            }
+        };
+
+        let grid = match GridEngine::from_str(&serialized) {
+            Ok(grid) => grid,
+            Err(err) => return Err(err),
+        };
+
+        Ok(grid)
+    }
+}
+
+impl Into<Vec<u8>> for &GridEngine {
+    fn into(self) -> Vec<u8> {
+        let serialized = serde_json::to_string(&self).expect("Failed to serialize GridEngine");
+        serialized.into_bytes()
+    }
+}
+
+impl From<&GridView> for GridEngine {
+    fn from(grid_view: &GridView) -> Self {
+        GridEngine {
+            grid: grid_view.grid.clone(),
+            items: grid_view.items.clone(),
+            pending_changes: Vec::new(),
+            events: EventListener::default(),
+        }
     }
 }
 
@@ -611,8 +688,8 @@ mod tests {
             deserialized_engine.get_grid_view().get_nodes()
         );
         assert_eq!(
-            engine.get_grid_view().get_grid_formatted(),
-            deserialized_engine.get_grid_view().get_grid_formatted()
+            engine.get_grid_view().get_grid_formatted(2),
+            deserialized_engine.get_grid_view().get_grid_formatted(2)
         );
     }
 }
