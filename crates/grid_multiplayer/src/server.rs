@@ -44,10 +44,9 @@ fn save_grid(id: &str, grid: GridEngine) {
 
 struct Client {
     id: String,
-    sender: mpsc::UnboundedSender<Message>, // sender: futures_channel::mpsc::UnboundedSender<Message>,
+    grid_changes_listener_id: String,
+    message: mpsc::UnboundedSender<Message>,
 }
-
-// type ArcClient = Arc<Mutex<Client>>;
 
 struct Room {
     clients: HashMap<String, Client>,
@@ -55,21 +54,36 @@ struct Room {
 }
 
 impl Room {
-    fn broadcast_change(&self, from: &str, event_value: EventValue) {
-        for (_, client) in self.clients.iter() {
-            if client.id == from {
-                continue;
-            }
-
-            let event_value: Vec<u8> = (&event_value).into();
-
-            match client.sender.send(Message::binary(event_value)) {
-                Ok(_) => {}
-                Err(e) => {
-                    panic!("Error sending message to client: {}", e);
-                    // Should warn in some way that the connection is closed
+    fn broadcast_change(&mut self, from: &str, event_value: EventValue) {
+        let clients_to_close: Vec<String> = self
+            .clients
+            .iter()
+            .filter(|(_, client)| {
+                if client.id != from {
+                    return false;
                 }
-            };
+
+                match client.message.send(Message::binary(&event_value)) {
+                    Ok(_) => false,
+                    Err(_) => true,
+                }
+            })
+            .map(|(_, client)| client.id.clone())
+            .collect();
+
+        for client_id in clients_to_close {
+            self.close_connection(&client_id);
+        }
+    }
+
+    fn close_connection(&mut self, client_id: &str) {
+        println!("Closing connection for {}", client_id);
+        let client = self.clients.remove(client_id);
+
+        if let Some(client) = client {
+            self.grid
+                .events
+                .remove_listener(EventName::BatchChange, &client.grid_changes_listener_id);
         }
     }
 }
@@ -152,7 +166,7 @@ async fn handle_connection(
     raw_stream: TcpStream,
     addr: SocketAddr,
     logger: Logger,
-) -> tokio_tungstenite::tungstenite::Result<()> {
+) {
     logger.info(&format!("Incoming TCP connection"));
 
     let (grid_id_sender, grid_id_receiver) = tokio::sync::oneshot::channel::<String>();
@@ -208,7 +222,8 @@ async fn handle_connection(
                     "Error during the websocket handshake occurred: {}",
                     e
                 ));
-                return Err(e);
+                // Should see if needs to handle it
+                return;
             }
             Ok(ws_stream) => ws_stream,
         };
@@ -219,10 +234,33 @@ async fn handle_connection(
 
     let (this_client_sender, mut this_client_receiver) = mpsc::unbounded_channel();
 
+    let (mut grid_events_rx, listener) = {
+        // Add event listener to grid
+        let grid_id = grid_id.clone();
+        let room = rooms.lock().unwrap();
+        let mut room = room.get(&grid_id).unwrap().lock().unwrap();
+        let grid = &mut room.grid;
+
+        let (grid_events_tx, grid_events_rx) = mpsc::unbounded_channel::<EventValue>();
+
+        let logger_clone = logger.append_context("Listener".to_string());
+        let listener = grid.events.add_listener(
+            EventName::BatchChange,
+            Box::new(move |_, event_value| {
+                logger_clone.info("Triggered listener");
+                grid_events_tx.send(event_value.clone()).unwrap();
+            }),
+        );
+        (grid_events_rx, listener)
+    };
+
     let client = Client {
         id: addr.to_string(),
-        sender: this_client_sender,
+        message: this_client_sender,
+        grid_changes_listener_id: listener,
     };
+
+    let client_id = client.id.clone();
 
     {
         let mut unlocked = rooms.lock().unwrap();
@@ -248,51 +286,56 @@ async fn handle_connection(
         Err(e) => {
             // Should handle possibly connection closed, or just assume that if this error happens the connection is closed
             logger.error(&format!("Error sending grid to client: {}", e));
-            panic!("Error sending grid to client: {}", e);
+            let room = rooms.lock().unwrap();
+            let mut room = room.get(&grid_id).unwrap().lock().unwrap();
+            room.close_connection(&client_id);
+            return;
         }
         Ok(_) => {}
     };
     logger.info("Grid send");
-
-    let mut grid_events_rx = {
-        // Add event listener to grid
-        let grid_id = grid_id.clone();
-        let room = rooms.lock().unwrap();
-        let mut room = room.get(&grid_id).unwrap().lock().unwrap();
-        let grid = &mut room.grid;
-
-        let (grid_events_tx, grid_events_rx) = mpsc::unbounded_channel::<EventValue>();
-
-        let logger_clone = logger.append_context("Listener".to_string());
-        grid.events.add_listener(
-            EventName::BatchChange,
-            Box::new(move |_, event_value| {
-                logger_clone.info("Triggered listener");
-                grid_events_tx.send(event_value.clone()).unwrap();
-            }),
-        );
-        grid_events_rx
-    };
 
     loop {
         tokio::select! {
             Some(event_value) = grid_events_rx.recv() => {
                 logger.info("1 Option: Received event from grid");
                 let room = rooms.lock().unwrap();
-                let room = room.get(&grid_id).unwrap().lock().unwrap();
-                let room = &room;
+                let mut room = room.get(&grid_id).unwrap().lock().unwrap();
 
                 room.broadcast_change(&addr.to_string(), event_value);
                 logger.info("Broadcasted event");
             },
             Some(msg) = ws_in.next() => {
-                let msg = msg?;
                 logger.info(&format!(
-                    "2 Option: Received a message from {}: {}",
+                    "2 Option: Received a message from {}: {:?}",
                     addr,
-                    msg.to_text().unwrap()
+                    msg
                 ));
+                let msg = match msg {
+                    Err(e) => {
+                        logger.error(&format!("Error receiving message: {}", e));
+                        // Should close the connection
+
+                        // panic!("Unhandled closed connection");
+                        let mut unlocked = rooms.lock().unwrap();
+                        let room = unlocked.get_mut(&grid_id).unwrap();
+                        room.lock()
+                            .unwrap()
+                            .close_connection(&client_id);
+
+                        break;
+                    }
+                    Ok(msg) => {
+                        msg
+                    }
+                };
+
                 if msg.is_close() {
+                    let mut unlocked = rooms.lock().unwrap();
+                    let room = unlocked.get_mut(&grid_id).unwrap();
+                    room.lock()
+                        .unwrap()
+                        .close_connection(&client_id);
                     break;
                 }
 
@@ -307,20 +350,24 @@ async fn handle_connection(
                             continue;
                         }
                         room.grid.apply_changes(&changes.changes);
-                        logger.info(&format!("\n {}", room.grid.get_grid_view().get_grid_formatted(1)));
+                        logger.info(&format!(
+                            "\n {}",
+                            room.grid.get_grid_view().get_grid_formatted(1)
+                        ));
                     }
                 }
-
-            },
-            Some(message) = this_client_receiver.recv() => {
-                logger.info("Event send on ws");
-                ws_out.send(message).await?;
+            }
+            Some(msg) = this_client_receiver.recv() => {
+                logger.info("3 Option: Received a message from client");
+                ws_out.send(msg).await.unwrap();
             }
         }
     }
 
+    let mut unlocked = rooms.lock().unwrap();
+    let room = unlocked.get_mut(&grid_id).unwrap();
+    room.lock().unwrap().close_connection(&client_id);
     logger.info(&format!("{} disconnected", &addr));
-    Ok(())
     // Should remove the client from the room
     // peer_map.lock().unwrap().remove(&addr);
 }
