@@ -39,6 +39,14 @@ fn update_grid(
     y: usize,
     operation: UpdateGridOperation,
 ) -> Result<(), GridError> {
+    if y + 1 > grid.rows() {
+        let diff = y + 1 - grid.rows();
+
+        for _ in 0..diff {
+            grid.push_row(vec![None; grid.cols()]);
+        }
+    }
+
     let element_at_position = grid.get_mut(y, x);
 
     match element_at_position {
@@ -55,11 +63,13 @@ fn update_grid(
             }
             Ok(())
         }
-        None => Err(GridError::new(
-            &format!("Error updating grid with {:?} operation", operation),
-            &format!("No element at position X:{x},Y:{y} in grid: {:?}", grid),
-            None,
-        )),
+        None => {
+            return Err(GridError::new(
+                &format!("Error updating grid with {:?} operation", operation),
+                &format!("No element at position X:{x},Y:{y} in grid: {:?}", grid),
+                None,
+            ))
+        }
     }
 }
 
@@ -510,7 +520,7 @@ mod tests {
     #[test]
     fn test_add_item_handle_duplicated_id() {
         let mut engine = GridEngine::new(10, 10);
-        let item_0_id = engine.add_item("0".to_string(), 0, 0, 2, 2).unwrap();
+        engine.add_item("0".to_string(), 0, 0, 2, 2).unwrap();
 
         assert!(engine.add_item("0".to_string(), 0, 0, 2, 2).is_err())
     }
@@ -692,4 +702,24 @@ mod tests {
             deserialized_engine.get_grid_view().get_grid_formatted(2)
         );
     }
+
+    #[test]
+    fn test_expand_rows_when_allowed() {
+        // Should add flag on Grid to allow rows expansions
+        
+        //Expand rows
+        let mut engine = GridEngine::new(10, 10);
+        let item = engine.add_item("0".to_string(), 0, 12, 2, 2).unwrap();
+        assert_eq!(engine.grid.rows(), 14);
+
+        // Asserts that its present on the expanded position
+        for_cell(0, 12, 2, 2, &mut |x, y| {
+            let item_on_expected_position = engine.grid.get(y, x).unwrap().as_ref().unwrap();
+            assert_eq!(item_on_expected_position, &item);
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    // Test not expanding rows or cols
 }
